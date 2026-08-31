@@ -1,16 +1,16 @@
 :root {
-  --bg: #07111f;
-  --panel: rgba(8, 22, 39, 0.86);
-  --panel-strong: #0d1b2f;
-  --panel-soft: rgba(18, 39, 68, 0.88);
-  --line: rgba(171, 201, 255, 0.18);
-  --text: #f5f8ff;
-  --muted: #9bb0cf;
-  --accent: #77e0b5;
-  --accent-strong: #2ec58d;
-  --warning: #f9b44d;
+  --bg: #eef5f8;
+  --panel: rgba(255, 255, 255, 0.94);
+  --panel-strong: #003b5c;
+  --panel-soft: #f3f8fa;
+  --line: rgba(0, 59, 92, 0.18);
+  --text: #003b5c;
+  --muted: #496778;
+  --accent: #ffcd00;
+  --accent-strong: #e7ad00;
+  --warning: #e87900;
   --danger: #f15b5b;
-  --shadow: 0 20px 50px rgba(0, 0, 0, 0.28);
+  --shadow: 0 16px 40px rgba(0, 59, 92, 0.13);
   --radius: 22px;
 }
 
@@ -24,9 +24,8 @@ body {
   font-family: "Barlow", sans-serif;
   color: var(--text);
   background:
-    radial-gradient(circle at top left, rgba(61, 118, 255, 0.23), transparent 28%),
-    radial-gradient(circle at top right, rgba(28, 209, 156, 0.14), transparent 25%),
-    linear-gradient(160deg, #04101e 0%, #09192d 48%, #07111f 100%);
+    linear-gradient(115deg, rgba(255, 205, 0, 0.22), transparent 32%),
+    linear-gradient(160deg, #f8fbfc 0%, #e7f0f4 52%, #dcebf1 100%);
 }
 
 button,
@@ -88,7 +87,7 @@ p {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 8px 10px;
-  background: rgba(4, 13, 24, 0.75);
+  background: #ffffff;
   color: var(--text);
 }
 
@@ -107,7 +106,7 @@ p {
 }
 
 .projects-dialog::backdrop {
-  background: rgba(2, 8, 17, 0.72);
+  background: rgba(0, 59, 92, 0.48);
 }
 
 .dialog-header {
@@ -198,10 +197,10 @@ p {
 .upload-card {
   display: grid;
   gap: 8px;
-  border: 1px dashed rgba(171, 201, 255, 0.28);
+  border: 1px dashed rgba(0, 59, 92, 0.35);
   border-radius: 18px;
   padding: 26px;
-  background: rgba(10, 26, 46, 0.72);
+  background: #f7fafb;
   cursor: pointer;
 }
 
@@ -287,7 +286,7 @@ kbd {
   margin-top: 18px;
   padding: 16px;
   border-radius: 16px;
-  background: rgba(10, 26, 46, 0.72);
+  background: #f7fafb;
   border: 1px solid var(--line);
 }
 
@@ -311,7 +310,7 @@ kbd {
   width: 0;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--accent-strong), #7ce5d1);
+  background: linear-gradient(90deg, var(--accent-strong), var(--accent));
   transition: width 160ms ease;
 }
 
@@ -323,7 +322,7 @@ kbd {
 .slot-card {
   border: 1px solid var(--line);
   border-radius: 18px;
-  background: rgba(10, 26, 46, 0.72);
+  background: #f7fafb;
   padding: 16px;
 }
 
@@ -346,9 +345,9 @@ kbd {
 .field input {
   width: 100%;
   border-radius: 12px;
-  border: 1px solid rgba(171, 201, 255, 0.16);
+  border: 1px solid rgba(0, 59, 92, 0.22);
   padding: 10px 12px;
-  background: rgba(4, 13, 24, 0.75);
+  background: #ffffff;
   color: var(--text);
 }
 
@@ -397,19 +396,19 @@ kbd {
 }
 
 .primary-button {
-  background: linear-gradient(135deg, var(--accent) 0%, #7ce5d1 100%);
-  color: #062033;
+  background: var(--accent);
+  color: #003b5c;
 }
 
 .secondary-button {
-  background: #d4e9ff;
-  color: #08213a;
+  background: #003b5c;
+  color: #ffffff;
 }
 
 .ghost-button {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(0, 59, 92, 0.06);
   color: var(--text);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(0, 59, 92, 0.18);
 }
 
 .danger-button {
@@ -439,8 +438,8 @@ button:disabled {
   display: grid;
   place-items: center;
   background:
-    linear-gradient(160deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0)),
-    rgba(2, 8, 17, 0.82);
+    linear-gradient(160deg, rgba(255, 205, 0, 0.1), rgba(255, 255, 255, 0)),
+    #003b5c;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
@@ -458,8 +457,9 @@ button:disabled {
   position: absolute;
   border-radius: 999px;
   padding: 10px 16px;
-  background: rgba(4, 13, 24, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 59, 92, 0.92);
+  border: 1px solid rgba(255, 205, 0, 0.55);
+  color: #ffffff;
 }
 
 .pdf-overlay {
@@ -687,7 +687,7 @@ kbd {
 body.is-presenting {
   --presentation-timeline-height: 112px;
   overflow: hidden;
-  background: #020811;
+  background: #003b5c;
 }
 
 body.is-presenting .app-shell {
@@ -716,7 +716,7 @@ body.is-presenting .pdf-stage {
   min-height: 0;
   border: 0;
   border-radius: 0;
-  background: #020811;
+  background: #003b5c;
   place-items: end center;
 }
 
@@ -737,7 +737,7 @@ body.is-presenting .timeline-panel {
   height: var(--presentation-timeline-height);
   padding: 4px 10px 5px;
   border-radius: 8px 8px 0 0;
-  background: rgba(8, 22, 39, 0.92);
+  background: rgba(0, 59, 92, 0.96);
   box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.2);
 }
 
