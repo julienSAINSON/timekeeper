@@ -747,18 +747,25 @@ kbd {
   padding: 0;
   place-items: center;
   transform: translateX(-50%);
-  border: 1px solid rgba(171, 201, 255, 0.22);
+  border: 1px solid #ffffff;
   border-radius: 6px;
-  background: rgba(4, 13, 24, 0.88);
-  color: var(--text);
+  background: #003b5c;
+  color: var(--accent);
   cursor: pointer;
   opacity: 0;
+  font-weight: 800;
   transition: opacity 160ms ease;
 }
 
 .timeline-panel:hover .presentation-details-toggle,
 .presentation-details-toggle:focus-visible,
 .presentation-details-toggle[aria-expanded="true"] {
+  opacity: 1;
+}
+
+body.is-presenting .timeline-panel:hover .presentation-details-toggle,
+body.is-presenting .presentation-details-toggle:focus-visible,
+body.is-presenting .presentation-details-toggle[aria-expanded="true"] {
   opacity: 1;
 }
 

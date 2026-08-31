@@ -848,6 +848,7 @@ async function enterPresentationMode() {
     plannedStart.setHours(startHours, startMinutes, 0, 0);
     state.presentation.initialDelayMs = Math.max(0, Date.now() - plannedStart.getTime());
     state.presentation.accruedDebtMs = state.presentation.initialDelayMs;
+    applyOverrunStrategy(-1, state.presentation.initialDelayMs);
   }
 
   if (state.presentation.isPaused && state.presentation.pausedAt) {
@@ -898,6 +899,7 @@ function nextSlide() {
   if (nextSlot && state.presentation.slotStartedElapsedMs[nextSlot.id] === undefined) {
     state.presentation.slotStartedElapsedMs[nextSlot.id] = getElapsedMs(state.presentation);
   }
+  updateFullscreenSideInfoVisibility();
   persist();
   renderCurrentSlide();
   renderPresentationMetrics();
@@ -909,6 +911,7 @@ function previousSlide() {
   }
 
   state.presentation.currentSlide -= 1;
+  updateFullscreenSideInfoVisibility();
   persist();
   renderCurrentSlide();
   renderPresentationMetrics();
@@ -1190,6 +1193,9 @@ function attachEvents() {
 
   document.addEventListener("fullscreenchange", () => {
     updateFullscreenSideInfoVisibility();
+    if (document.fullscreenElement) {
+      setPresentationDetailsCollapsed(true);
+    }
     if (elements.presentationView.classList.contains("active")) {
       renderCurrentSlide().catch(console.error);
     }
