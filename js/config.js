@@ -9,6 +9,7 @@ function createDefaultState() {
     plenary: {
       startTime: "",
       endTime: "",
+      durationMinutes: "",
     },
     presentation: {
       isRunning: false,
@@ -26,13 +27,24 @@ function createDefaultState() {
 
 export function normalizeState(rawState) {
   const defaultState = createDefaultState();
+  const rawPlenary = rawState?.plenary || {};
+  const legacyDurationMinutes = getDurationFromTimes(rawPlenary.startTime, rawPlenary.endTime);
+  const enteredDurationMinutes = Number(rawPlenary.durationMinutes);
+  const durationMinutes =
+    Number.isFinite(enteredDurationMinutes) && enteredDurationMinutes > 0
+      ? enteredDurationMinutes
+      : legacyDurationMinutes || "";
+  const plenary = {
+    ...defaultState.plenary,
+    ...rawPlenary,
+    durationMinutes,
+  };
+  plenary.endTime = getPlenaryEndTime(plenary);
+
   return {
     ...defaultState,
     ...rawState,
-    plenary: {
-      ...defaultState.plenary,
-      ...rawState?.plenary,
-    },
+    plenary,
     presentation: {
       ...defaultState.presentation,
       ...rawState?.presentation,
@@ -48,15 +60,33 @@ function timeToMinutes(time) {
   return hours * 60 + minutes;
 }
 
-export function getPlenaryDurationMinutes(plenary) {
-  const startMinutes = timeToMinutes(plenary.startTime);
-  const endMinutes = timeToMinutes(plenary.endTime);
-
+function getDurationFromTimes(startTime, endTime) {
+  const startMinutes = timeToMinutes(startTime);
+  const endMinutes = timeToMinutes(endTime);
   if (startMinutes === null || endMinutes === null || endMinutes <= startMinutes) {
     return null;
   }
-
   return endMinutes - startMinutes;
+}
+
+export function getPlenaryEndTime(plenary) {
+  const startMinutes = timeToMinutes(plenary.startTime);
+  const durationMinutes = Number(plenary.durationMinutes);
+  if (startMinutes === null || !Number.isFinite(durationMinutes) || durationMinutes <= 0) {
+    return "";
+  }
+
+  const endMinutes = (startMinutes + durationMinutes) % (24 * 60);
+  return `${String(Math.floor(endMinutes / 60)).padStart(2, "0")}:${String(endMinutes % 60).padStart(2, "0")}`;
+}
+
+export function getPlenaryDurationMinutes(plenary) {
+  const startMinutes = timeToMinutes(plenary.startTime);
+  const durationMinutes = Number(plenary.durationMinutes);
+  if (startMinutes === null || !Number.isFinite(durationMinutes) || durationMinutes <= 0) {
+    return null;
+  }
+  return durationMinutes;
 }
 
 export function validatePlenary(plenary, slots) {
@@ -71,7 +101,7 @@ export function validatePlenary(plenary, slots) {
       isValid: false,
       durationMinutes: 0,
       unallocatedMinutes: 0,
-      message: "Renseignez une heure de début et une heure de fin valides.",
+      message: "Renseignez une heure de début et une durée de réunion valides.",
     };
   }
 

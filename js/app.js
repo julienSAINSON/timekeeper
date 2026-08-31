@@ -4,6 +4,7 @@ import {
   normalizeState,
   resetState,
   saveState,
+  getPlenaryEndTime,
   validatePlenary,
   validateSlots,
 } from "./config.js";
@@ -42,7 +43,7 @@ const elements = {
   pdfName: document.querySelector("#pdfName"),
   pageCount: document.querySelector("#pageCount"),
   plenaryStart: document.querySelector("#plenaryStart"),
-  plenaryEnd: document.querySelector("#plenaryEnd"),
+  plenaryDurationInput: document.querySelector("#plenaryDurationInput"),
   plenaryDuration: document.querySelector("#plenaryDuration"),
   unallocatedDuration: document.querySelector("#unallocatedDuration"),
   plenaryValidation: document.querySelector("#plenaryValidation"),
@@ -116,7 +117,7 @@ function hasProjectContent() {
       state.pdfName ||
       state.slots.length ||
       state.plenary.startTime ||
-      state.plenary.endTime,
+      state.plenary.durationMinutes,
   );
 }
 
@@ -434,7 +435,7 @@ function renderConfiguration() {
   elements.pdfName.textContent = state.pdfName || "Aucun PDF importe";
   elements.pageCount.textContent = String(state.pageCount || 0);
   elements.plenaryStart.value = state.plenary.startTime;
-  elements.plenaryEnd.value = state.plenary.endTime;
+  elements.plenaryDurationInput.value = state.plenary.durationMinutes;
 
   if (state.pdfName && currentPdfBuffer) {
     elements.pdfPreviewState.textContent = "PDF pret pour la presentation.";
@@ -451,7 +452,8 @@ function renderConfiguration() {
 }
 
 function updatePlenary(field, value) {
-  state.plenary[field] = value;
+  state.plenary[field] = field === "durationMinutes" && value !== "" ? Number(value) : value;
+  state.plenary.endTime = getPlenaryEndTime(state.plenary);
   persist();
   renderValidation();
 }
@@ -896,8 +898,8 @@ function attachEvents() {
   elements.plenaryStart.addEventListener("input", (event) => {
     updatePlenary("startTime", event.target.value);
   });
-  elements.plenaryEnd.addEventListener("input", (event) => {
-    updatePlenary("endTime", event.target.value);
+  elements.plenaryDurationInput.addEventListener("input", (event) => {
+    updatePlenary("durationMinutes", event.target.value);
   });
   elements.projectName.addEventListener("input", (event) => {
     updateProjectName(event.target.value);
