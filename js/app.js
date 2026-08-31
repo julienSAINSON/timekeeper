@@ -79,6 +79,7 @@ const elements = {
   pauseBtn: document.querySelector("#pauseBtn"),
   resumeBtn: document.querySelector("#resumeBtn"),
   fullscreenBtn: document.querySelector("#fullscreenBtn"),
+  exportReportBtn: document.querySelector("#exportReportBtn"),
   exitPresentationBtn: document.querySelector("#exitPresentationBtn"),
   resetBtn: document.querySelector("#resetBtn"),
   globalTimer: document.querySelector("#globalTimer"),
@@ -685,6 +686,36 @@ function startTicking() {
   }, 250);
 }
 
+function escapeCsvValue(value) {
+  return `"${String(value).replaceAll('"', '""')}"`;
+}
+
+function exportPresentationReport() {
+  const presentationSummary = getPresentationSummary();
+  const overrunsMs = { ...state.presentation.slotOverrunsMs };
+  if (presentationSummary.currentSlot && presentationSummary.slotStatus.overrunMs > 0) {
+    overrunsMs[presentationSummary.currentSlot.id] = presentationSummary.slotStatus.overrunMs;
+  }
+
+  const rows = [
+    ["Nom du créneau", "Temps initial", "Temps de dépassement", "Retard au démarrage de la réunion"],
+    ...state.slots.map((slot) => [
+      slot.name,
+      formatClock(Number(slot.durationMinutes) * 60 * 1000),
+      formatClock(Number(overrunsMs[slot.id] || 0)),
+      formatClock(state.presentation.initialDelayMs),
+    ]),
+  ];
+  const csv = `\uFEFF${rows.map((row) => row.map(escapeCsvValue).join(";")).join("\r\n")}`;
+  const reportUrl = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const download = document.createElement("a");
+  const projectName = state.projectName.trim() || "pleniere";
+  download.href = reportUrl;
+  download.download = `rapport-${projectName.replaceAll(/[^a-z0-9]+/gi, "-").replaceAll(/^-|-$/g, "")}.csv`;
+  download.click();
+  URL.revokeObjectURL(reportUrl);
+}
+
 function stopTicking() {
   if (tickHandle) {
     window.clearInterval(tickHandle);
@@ -1059,6 +1090,7 @@ function attachEvents() {
   elements.pdfStage.addEventListener("click", nextSlide);
   elements.pauseBtn.addEventListener("click", pausePresentation);
   elements.resumeBtn.addEventListener("click", resumePresentation);
+  elements.exportReportBtn.addEventListener("click", exportPresentationReport);
   elements.exitPresentationBtn.addEventListener("click", leavePresentationMode);
   elements.resetBtn.addEventListener("click", resetPresentation);
   elements.clearConfigBtn.addEventListener("click", clearConfiguration);
