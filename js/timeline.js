@@ -27,6 +27,7 @@ export function renderTimeline(
   totalDurationMs = slotTimings.at(-1)?.endOffsetMs ?? 1,
   unallocatedDurationMs = 0,
   slotReductionsMs = {},
+  currentSlotElapsedMs = 0,
 ) {
   const totalOverrunMs = totalDebtMs;
   const overflowDurationMs = Math.max(0, totalOverrunMs - unallocatedDurationMs);
@@ -49,11 +50,10 @@ export function renderTimeline(
 
   slotTimings.forEach((slot) => {
     const isCurrent = currentSlide >= slot.startSlide && currentSlide <= slot.endSlide;
-    const slotElapsedMs = Math.max(
-      0,
-      elapsedMs - slot.startOffsetMs,
-    );
-    const isCompleted = elapsedMs >= slot.endOffsetMs || currentSlide > slot.endSlide;
+    const slotElapsedMs = isCurrent
+      ? Math.max(0, currentSlotElapsedMs)
+      : Math.max(0, elapsedMs - slot.startOffsetMs);
+    const isCompleted = currentSlide > slot.endSlide;
     const overrunMs = isCurrent ? Math.max(0, slotElapsedMs - slot.durationMs) : 0;
     const progress = slot.durationMs > 0 ? slotElapsedMs / slot.durationMs : 0;
     const tone = overrunMs > 0 ? "danger" : progress >= 0.8 && isCurrent ? "warning" : "ok";

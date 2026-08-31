@@ -637,8 +637,10 @@ button:disabled {
 }
 
 .timeline-slot {
+  box-sizing: border-box;
   position: relative;
-  min-width: 64px;
+  min-width: 0;
+  flex: 0 1 auto;
   padding: 14px 12px;
   border-right: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
@@ -652,10 +654,18 @@ button:disabled {
 }
 
 .timeline-slot strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 1.02rem;
 }
 
 .timeline-slot small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: rgba(255, 255, 255, 0.82);
 }
 
@@ -753,7 +763,7 @@ kbd {
 }
 
 body.is-presenting {
-  --presentation-timeline-height: 112px;
+  --presentation-timeline-height: 92px;
   overflow: hidden;
   background: #003b5c;
 }
@@ -779,21 +789,107 @@ body.is-presenting .presentation-stage {
 }
 
 body.is-presenting .pdf-stage {
+  --slide-side-info-width: clamp(150px, 14vw, 210px);
+  --slide-canvas-side-reserve: clamp(130px, 12vw, 180px);
   flex: 1;
   height: auto;
   min-height: 0;
   border: 0;
   border-radius: 0;
-  background: #003b5c;
-  place-items: end center;
+  background: #05080d;
+  place-items: start center;
 }
 
 body.is-presenting #pdfCanvas {
   display: block;
   width: auto;
-  height: auto;
-  max-width: 100%;
+  height: 100%;
+  max-width: calc(100% - (var(--slide-canvas-side-reserve) * 2) - 32px);
   max-height: 100%;
+}
+
+:fullscreen body.is-presenting #pdfCanvas {
+  max-width: 100%;
+}
+
+.slide-side-info {
+  display: none;
+}
+
+body.is-presenting .slide-side-info {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  display: grid;
+  width: var(--slide-side-info-width);
+  gap: 10px;
+  padding: 18px;
+  transform: translateY(-50%);
+  border: 1px solid rgba(255, 205, 0, 0.6);
+  border-radius: 6px;
+  background: rgba(0, 43, 69, 0.96);
+  color: #ffffff;
+}
+
+body.is-presenting .slide-side-info-current {
+  left: 16px;
+}
+
+body.is-presenting .slide-side-info-current.status-ok {
+  border-color: #38b9a8;
+  background: #007a78;
+}
+
+body.is-presenting .slide-side-info-current.status-warning {
+  border-color: #ffdf57;
+  background: #b76e00;
+}
+
+body.is-presenting .slide-side-info-current.status-danger {
+  border-color: #ffb4ad;
+  background: #b42318;
+}
+
+body.is-presenting .slide-side-info-next {
+  right: 16px;
+}
+
+.slide-side-info-label {
+  color: #ffdf57;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.slide-side-info strong {
+  overflow-wrap: anywhere;
+  font-size: 1.35rem;
+}
+
+.slide-side-info-time {
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.slide-side-info-status {
+  color: #ffdf57;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+:fullscreen body.is-presenting .slide-side-info {
+  top: 16px;
+  bottom: auto;
+  width: var(--slide-side-info-width);
+  align-content: normal;
+  border-radius: 6px;
+  opacity: 1;
+  transform: none;
+  transition: opacity 180ms ease;
+}
+
+:fullscreen.side-info-idle body.is-presenting .slide-side-info {
+  opacity: 0.28;
 }
 
 body.is-presenting .timeline-panel {
@@ -877,6 +973,7 @@ body.is-presenting .presentation-view.presentation-details-open .presentation-de
 
 body.is-presenting .presentation-view.presentation-details-open .timeline-wrapper {
   flex: 0 0 auto;
+  transform: none;
 }
 
 body.is-presenting .headline-metrics {
@@ -949,6 +1046,7 @@ body.is-presenting .metric-duo strong {
 body.is-presenting .timeline-wrapper {
   margin-top: 0;
   padding: 22px 0 0;
+  transform: translateY(-20px);
 }
 
 body.is-presenting .timeline-scale {
@@ -976,7 +1074,11 @@ body.is-presenting .timeline-slot small {
 }
 
 body.is-presenting .now-marker::before {
-  height: 78px;
+  height: 42px;
+}
+
+body.is-presenting .now-marker {
+  top: 20px;
 }
 
 body.is-presenting .now-marker span {
@@ -1051,5 +1153,15 @@ body.is-presenting .now-marker span {
     min-width: 0;
     padding: 9px 8px;
     font-size: 0.85rem;
+  }
+}
+
+@media (max-width: 900px) {
+  body.is-presenting #pdfCanvas {
+    max-width: 100%;
+  }
+
+  body.is-presenting .slide-side-info {
+    display: none;
   }
 }

@@ -34,6 +34,7 @@ const state = loadState();
 let tickHandle = null;
 let currentPdfBuffer = null;
 let hasUnsavedChanges = false;
+let sideInfoIdleHandle = null;
 
 const elements = {
   configView: document.querySelector("#configView"),
@@ -70,6 +71,13 @@ const elements = {
   progressFill: document.querySelector("#progressFill"),
   pdfCanvas: document.querySelector("#pdfCanvas"),
   pdfStage: document.querySelector("#pdfStage"),
+  sideCurrentSlotPanel: document.querySelector(".slide-side-info-current"),
+  sideNextSlotPanel: document.querySelector(".slide-side-info-next"),
+  sideCurrentSlotName: document.querySelector("#sideCurrentSlotName"),
+  sideCurrentSlotTime: document.querySelector("#sideCurrentSlotTime"),
+  sideCurrentSlotStatus: document.querySelector("#sideCurrentSlotStatus"),
+  sideNextSlotName: document.querySelector("#sideNextSlotName"),
+  sideNextSlotTime: document.querySelector("#sideNextSlotTime"),
   pdfLoading: document.querySelector("#pdfLoading"),
   slideCounter: document.querySelector("#slideCounter"),
   presentationDetails: document.querySelector("#presentationDetails"),
@@ -111,6 +119,19 @@ function persist() {
         elements.storageStatus.textContent = "Synchronisation Supabase indisponible";
       });
   }
+}
+
+function updateFullscreenSideInfoVisibility() {
+  window.clearTimeout(sideInfoIdleHandle);
+  document.documentElement.classList.remove("side-info-idle");
+
+  if (!document.fullscreenElement) {
+    return;
+  }
+
+  sideInfoIdleHandle = window.setTimeout(() => {
+    document.documentElement.classList.add("side-info-idle");
+  }, 2000);
 }
 
 function hasProjectContent() {
@@ -561,13 +582,25 @@ async function renderCurrentSlide() {
     return;
   }
 
+  const sidePanelWidth = Math.max(
+    elements.sideCurrentSlotPanel.getBoundingClientRect().width,
+    elements.sideNextSlotPanel.getBoundingClientRect().width,
+  );
+  const canvasSideReserve = Math.min(180, Math.max(130, window.innerWidth * 0.12));
+  const sideSpace = sidePanelWidth > 0 ? canvasSideReserve : 0;
+  const horizontalGutter = sidePanelWidth > 0 ? 32 : 0;
+  const availableWidth = Math.max(
+    1,
+    elements.pdfStage.clientWidth - sideSpace * 2 - horizontalGutter,
+  );
+
   elements.slideCounter.textContent = `Slide ${state.presentation.currentSlide} / ${state.pageCount}`;
   elements.pdfLoading.hidden = false;
   try {
     await renderPage(
       state.presentation.currentSlide,
       elements.pdfCanvas,
-      elements.pdfStage.clientWidth,
+      availableWidth,
       elements.pdfStage.clientHeight,
     );
   } finally {
@@ -645,6 +678,17 @@ function renderPresentationMetrics() {
     currentSlot?.durationMs ?? 0,
   )}`;
   elements.slotStatusText.textContent = slotStatus.label;
+  const currentSlotIndex = slotTimings.findIndex((slot) => slot.id === currentSlot?.id);
+  const nextSlot = currentSlotIndex >= 0 ? slotTimings[currentSlotIndex + 1] : null;
+  elements.sideCurrentSlotName.textContent = currentSlot?.name ?? "Hors plan";
+  elements.sideCurrentSlotTime.textContent = `${formatClock(slotStatus.slotElapsedMs)} / ${formatClock(
+    currentSlot?.durationMs ?? 0,
+  )}`;
+  elements.sideCurrentSlotStatus.textContent = slotStatus.label;
+  elements.sideCurrentSlotPanel.classList.remove("status-ok", "status-warning", "status-danger");
+  elements.sideCurrentSlotPanel.classList.add(`status-${slotStatus.tone}`);
+  elements.sideNextSlotName.textContent = nextSlot?.name ?? "Fin de la plénière";
+  elements.sideNextSlotTime.textContent = nextSlot ? formatClock(nextSlot.durationMs) : "--:--";
   elements.timeDebt.textContent = `+${formatClock(totalDebtMs)}`;
   elements.estimatedEnd.textContent =
     plannedEnd && estimatedEnd
@@ -676,6 +720,7 @@ function renderPresentationMetrics() {
     totalPlannedMs,
     unallocatedDurationMs,
     state.presentation.slotReductionsMs,
+    slotStatus.slotElapsedMs,
   );
 }
 
@@ -1140,6 +1185,19 @@ function attachEvents() {
   window.addEventListener("resize", () => {
     if (elements.presentationView.classList.contains("active")) {
       renderCurrentSlide().catch(console.error);
+    }
+  });
+
+  document.addEventListener("fullscreenchange", () => {
+    updateFullscreenSideInfoVisibility();
+    if (elements.presentationView.classList.contains("active")) {
+      renderCurrentSlide().catch(console.error);
+    }
+  });
+
+  document.addEventListener("mousemove", () => {
+    if (document.fullscreenElement) {
+      updateFullscreenSideInfoVisibility();
     }
   });
 

@@ -186,7 +186,18 @@
         <section id="presentationView" class="view presentation-view">
           <div class="presentation-stage">
             <div id="pdfStage" class="pdf-stage">
+              <aside class="slide-side-info slide-side-info-current" aria-label="Créneau en cours">
+                <span class="slide-side-info-label">En cours</span>
+                <strong id="sideCurrentSlotName">En attente</strong>
+                <span id="sideCurrentSlotTime" class="slide-side-info-time">00:00 / 00:00</span>
+                <span id="sideCurrentSlotStatus" class="slide-side-info-status">Prêt</span>
+              </aside>
               <canvas id="pdfCanvas"></canvas>
+              <aside class="slide-side-info slide-side-info-next" aria-label="Prochain créneau">
+                <span class="slide-side-info-label">À suivre</span>
+                <strong id="sideNextSlotName">Fin de la plénière</strong>
+                <span id="sideNextSlotTime" class="slide-side-info-time">--:--</span>
+              </aside>
               <div id="pdfLoading" class="pdf-overlay">Chargement du PDF…</div>
               <div id="slideCounter" class="slide-counter">Slide 0 / 0</div>
             </div>
