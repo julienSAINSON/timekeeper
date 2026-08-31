@@ -27,10 +27,29 @@ Application web front-end pour piloter le temps d'une plénière SAFe avec un PD
 │   ├── app.js
 │   ├── config.js
 │   ├── pdfViewer.js
+│   ├── supabase.js
 │   ├── timeline.js
 │   └── timer.js
+├── supabase/
+│   └── schema.sql
 └── README.md
 ```
+
+## Synchronisation Supabase
+
+La configuration et l'état de présentation peuvent être partagés au moyen d'un lien, sans compte utilisateur. Donnez d'abord un nom au projet, puis utilisez « Sauvegarder » : lors du premier enregistrement, le lien partagé est créé automatiquement. Le PDF reste local : chaque personne qui ouvre le lien doit l'importer avant de démarrer la présentation.
+
+1. Dans Supabase, ouvrez `SQL Editor`.
+2. Copiez puis exécutez tout le contenu de [supabase/schema.sql](supabase/schema.sql).
+3. Déployez l'application puis utilisez le bouton « Créer un lien partagé ».
+
+Après toute mise à jour du projet, réexécutez ce script : il crée ou met à jour les fonctions Supabase, notamment la suppression de projet.
+
+Le lien contient un jeton UUID qui donne accès à la plénière. Partagez-le uniquement avec les personnes autorisées à voir ou modifier cette configuration.
+
+Le bouton « Nouveau projet » remet la configuration locale à zéro sans supprimer les projets sauvegardés. Le bouton « Mes projets » liste les projets partagés ouverts sur le navigateur courant. Le bouton « Ouvrir » charge leur dernière configuration pour modification ; le PDF doit alors être réimporté avant le lancement. Le bouton « Supprimer » efface définitivement le projet de Supabase et invalide son lien partagé.
+
+Avant d'ouvrir un autre projet, de créer un nouveau projet ou d'effacer la configuration, l'application demande confirmation lorsque le projet courant contient des modifications qui ne sont pas encore sauvegardées.
 
 ## Lancer localement
 

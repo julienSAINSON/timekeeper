@@ -21,9 +21,22 @@
         </div>
         <div class="topbar-actions">
           <span id="storageStatus" class="storage-status">Configuration locale active</span>
+          <button id="newProjectBtn" class="ghost-button" type="button">Nouveau projet</button>
+          <button id="projectsBtn" class="ghost-button" type="button">Mes projets</button>
+          <button id="saveBtn" class="primary-button" type="button">Sauvegarder</button>
+          <button id="shareBtn" class="secondary-button" type="button">Créer un lien partagé</button>
           <button id="clearConfigBtn" class="ghost-button" type="button">Effacer la configuration</button>
         </div>
+        <input id="shareLink" class="share-link" type="text" readonly aria-label="Lien de plénière partagé" hidden />
       </header>
+
+      <dialog id="projectsDialog" class="projects-dialog">
+        <div class="dialog-header">
+          <h2>Mes projets</h2>
+          <button id="closeProjectsBtn" class="ghost-button" type="button" aria-label="Fermer la liste des projets">Fermer</button>
+        </div>
+        <div id="projectsList" class="projects-list"></div>
+      </dialog>
 
       <main>
         <section id="configView" class="view active">
@@ -34,6 +47,10 @@
               <p class="lead">
                 Importez le PDF, définissez les créneaux et vérifiez rapidement que toute la présentation est couverte.
               </p>
+            </div>
+            <div class="project-name-field field">
+              <label for="projectName">Nom du projet</label>
+              <input id="projectName" type="text" maxlength="100" placeholder="Ex. PI Planning - Septembre" />
             </div>
             <button id="startPresentationBtn" class="primary-button" type="button" disabled>
               ▶ Démarrer la plénière

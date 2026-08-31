@@ -1,6 +1,7 @@
 import {
   createSlot,
   loadState,
+  normalizeState,
   resetState,
   saveState,
   validatePlenary,
@@ -16,14 +17,27 @@ import {
   getSlotTiming,
 } from "./timer.js";
 import { renderTimeline } from "./timeline.js";
+import {
+  createSharedPlenary,
+  deleteSharedPlenary,
+  forgetProject,
+  getKnownProjects,
+  getSharedTokenFromUrl,
+  getSharedUrl,
+  loadSharedPlenary,
+  rememberProject,
+  saveSharedPlenary,
+} from "./supabase.js";
 
 const state = loadState();
 let tickHandle = null;
 let currentPdfBuffer = null;
+let hasUnsavedChanges = false;
 
 const elements = {
   configView: document.querySelector("#configView"),
   presentationView: document.querySelector("#presentationView"),
+  projectName: document.querySelector("#projectName"),
   pdfInput: document.querySelector("#pdfInput"),
   pdfName: document.querySelector("#pdfName"),
   pageCount: document.querySelector("#pageCount"),
@@ -38,6 +52,14 @@ const elements = {
   slotsList: document.querySelector("#slotsList"),
   startPresentationBtn: document.querySelector("#startPresentationBtn"),
   addSlotBtn: document.querySelector("#addSlotBtn"),
+  newProjectBtn: document.querySelector("#newProjectBtn"),
+  projectsBtn: document.querySelector("#projectsBtn"),
+  projectsDialog: document.querySelector("#projectsDialog"),
+  closeProjectsBtn: document.querySelector("#closeProjectsBtn"),
+  projectsList: document.querySelector("#projectsList"),
+  saveBtn: document.querySelector("#saveBtn"),
+  shareBtn: document.querySelector("#shareBtn"),
+  shareLink: document.querySelector("#shareLink"),
   clearConfigBtn: document.querySelector("#clearConfigBtn"),
   storageStatus: document.querySelector("#storageStatus"),
   importProgress: document.querySelector("#importProgress"),
@@ -72,7 +94,232 @@ const elements = {
 };
 
 function persist() {
+  hasUnsavedChanges = true;
   saveState(state);
+  if (state.remoteToken) {
+    rememberProject(state.remoteToken, state.projectName);
+    saveSharedPlenary(state.remoteToken, state)
+      .then(() => {
+        hasUnsavedChanges = false;
+        elements.storageStatus.textContent = "Configuration synchronisée";
+      })
+      .catch((error) => {
+        console.error(error);
+        elements.storageStatus.textContent = "Synchronisation Supabase indisponible";
+      });
+  }
+}
+
+function hasProjectContent() {
+  return Boolean(
+    state.projectName.trim() ||
+      state.pdfName ||
+      state.slots.length ||
+      state.plenary.startTime ||
+      state.plenary.endTime,
+  );
+}
+
+function confirmDiscardUnsavedChanges(action) {
+  if (!hasUnsavedChanges || !hasProjectContent()) {
+    return true;
+  }
+
+  return window.confirm(
+    `Des modifications ne sont pas encore sauvegardées. ${action} les fera perdre. Continuer ?`,
+  );
+}
+
+function renderProjects() {
+  const projects = getKnownProjects();
+  elements.projectsList.innerHTML = "";
+
+  if (projects.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "Aucun projet partagé n'a encore été ouvert sur ce navigateur.";
+    elements.projectsList.appendChild(empty);
+    return;
+  }
+
+  projects.forEach((project) => {
+    const item = document.createElement("article");
+    const details = document.createElement("div");
+    const name = document.createElement("strong");
+    const date = document.createElement("span");
+    const actions = document.createElement("div");
+    const open = document.createElement("button");
+    const remove = document.createElement("button");
+
+    item.className = "project-list-item";
+    name.textContent = project.name;
+    date.textContent = `Dernière ouverture : ${new Date(project.lastOpenedAt).toLocaleString("fr-FR")}`;
+    details.append(name, date);
+    open.className = "secondary-button";
+    open.type = "button";
+    open.dataset.projectToken = project.token;
+    open.dataset.action = "open";
+    open.textContent = "Ouvrir";
+    remove.className = "danger-button";
+    remove.type = "button";
+    remove.dataset.projectToken = project.token;
+    remove.dataset.projectName = project.name;
+    remove.dataset.action = "delete";
+    remove.textContent = "Supprimer";
+    actions.className = "project-list-actions";
+    actions.append(open, remove);
+    item.append(details, actions);
+    elements.projectsList.appendChild(item);
+  });
+}
+
+async function openProject(token) {
+  if (!confirmDiscardUnsavedChanges("Ouvrir un autre projet")) {
+    return;
+  }
+
+  elements.storageStatus.textContent = "Chargement du projet...";
+  const remoteState = await loadSharedPlenary(token);
+  if (!remoteState) {
+    throw new Error("Ce projet partagé est introuvable.");
+  }
+
+  Object.assign(state, normalizeState(remoteState), { remoteToken: token });
+  currentPdfBuffer = null;
+  elements.pdfInput.value = "";
+  stopTicking();
+  switchView(false);
+  saveState(state);
+  rememberProject(token, state.projectName);
+  hasUnsavedChanges = false;
+  window.history.replaceState({}, "", getSharedUrl(token));
+  elements.projectsDialog.close();
+  renderConfiguration();
+  elements.storageStatus.textContent = "Projet chargé. Réimportez le PDF pour le lancer.";
+}
+
+async function deleteProject(token, projectName) {
+  if (!window.confirm(`Supprimer définitivement le projet "${projectName}" ?`)) {
+    return;
+  }
+
+  elements.storageStatus.textContent = "Suppression du projet...";
+  await deleteSharedPlenary(token);
+  forgetProject(token);
+
+  if (state.remoteToken === token) {
+    Object.assign(state, resetState());
+    delete state.remoteToken;
+    currentPdfBuffer = null;
+    elements.pdfInput.value = "";
+    stopTicking();
+    switchView(false);
+    window.history.replaceState({}, "", window.location.pathname);
+    renderConfiguration();
+  } else {
+    renderProjects();
+  }
+
+  elements.storageStatus.textContent = "Projet supprimé";
+}
+
+function renderShareLink() {
+  const isShared = Boolean(state.remoteToken);
+  elements.shareLink.hidden = !isShared;
+  elements.shareLink.value = isShared ? getSharedUrl(state.remoteToken) : "";
+  elements.shareBtn.textContent = isShared ? "Copier le lien partagé" : "Créer un lien partagé";
+}
+
+async function copyShareLink() {
+  if (!state.remoteToken) {
+    if (!state.projectName.trim()) {
+      elements.projectName.focus();
+      throw new Error("Donnez un nom au projet avant de créer son lien partagé.");
+    }
+    elements.storageStatus.textContent = "Création du lien partagé...";
+    const token = await createSharedPlenary(state);
+    state.remoteToken = token;
+    saveState(state);
+    rememberProject(token, state.projectName);
+    hasUnsavedChanges = false;
+    window.history.replaceState({}, "", getSharedUrl(token));
+    renderShareLink();
+    elements.storageStatus.textContent = "Lien partagé créé";
+    return;
+  }
+
+  const link = getSharedUrl(state.remoteToken);
+  try {
+    await navigator.clipboard.writeText(link);
+    elements.storageStatus.textContent = "Lien partagé copié";
+  } catch (error) {
+    console.warn("Copie automatique indisponible.", error);
+    elements.shareLink.focus();
+    elements.shareLink.select();
+    elements.storageStatus.textContent = "Copiez le lien affiché";
+  }
+}
+
+async function saveProject() {
+  if (!state.projectName.trim()) {
+    elements.projectName.focus();
+    throw new Error("Donnez un nom au projet avant de le sauvegarder.");
+  }
+
+  elements.saveBtn.disabled = true;
+  elements.storageStatus.textContent = "Sauvegarde du projet...";
+  try {
+    if (!state.remoteToken) {
+      state.remoteToken = await createSharedPlenary(state);
+      window.history.replaceState({}, "", getSharedUrl(state.remoteToken));
+      renderShareLink();
+    }
+
+    await saveSharedPlenary(state.remoteToken, state);
+    saveState(state);
+    rememberProject(state.remoteToken, state.projectName);
+    hasUnsavedChanges = false;
+    elements.storageStatus.textContent = "Projet sauvegardé";
+  } finally {
+    elements.saveBtn.disabled = false;
+  }
+}
+
+function createNewProject() {
+  if (!confirmDiscardUnsavedChanges("Créer un nouveau projet")) {
+    return;
+  }
+
+  Object.assign(state, resetState());
+  delete state.remoteToken;
+  hasUnsavedChanges = false;
+  currentPdfBuffer = null;
+  elements.pdfInput.value = "";
+  stopTicking();
+  switchView(false);
+  window.history.replaceState({}, "", window.location.pathname);
+  renderConfiguration();
+  elements.storageStatus.textContent = "Nouveau projet prêt à configurer";
+  elements.projectName.focus();
+}
+
+async function loadSharedState() {
+  const token = getSharedTokenFromUrl();
+  if (!token) {
+    return;
+  }
+
+  elements.storageStatus.textContent = "Chargement de la plénière partagée...";
+  const remoteState = await loadSharedPlenary(token);
+  if (!remoteState) {
+    throw new Error("Cette plénière partagée est introuvable.");
+  }
+
+  Object.assign(state, normalizeState(remoteState), { remoteToken: token });
+  saveState(state);
+  rememberProject(token, state.projectName);
+  renderShareLink();
+  elements.storageStatus.textContent = "Configuration partagée synchronisée";
 }
 
 function setImportProgress(percent, label) {
@@ -183,6 +430,7 @@ function renderValidation() {
 }
 
 function renderConfiguration() {
+  elements.projectName.value = state.projectName;
   elements.pdfName.textContent = state.pdfName || "Aucun PDF importe";
   elements.pageCount.textContent = String(state.pageCount || 0);
   elements.plenaryStart.value = state.plenary.startTime;
@@ -199,12 +447,18 @@ function renderConfiguration() {
 
   renderSlots();
   renderValidation();
+  renderShareLink();
 }
 
 function updatePlenary(field, value) {
   state.plenary[field] = value;
   persist();
   renderValidation();
+}
+
+function updateProjectName(value) {
+  state.projectName = value;
+  persist();
 }
 
 function updateSlot(slotId, field, value, skipFullRender = false) {
@@ -557,12 +811,18 @@ function resetPresentation() {
 }
 
 function clearConfiguration() {
-  if (!window.confirm("Effacer le PDF, les creneaux et les chronos sauvegardes ?")) {
+  if (!confirmDiscardUnsavedChanges("Effacer la configuration")) {
     return;
   }
 
+  const remoteToken = state.remoteToken;
   const freshState = resetState();
+  if (remoteToken) {
+    freshState.remoteToken = remoteToken;
+  }
   Object.assign(state, freshState);
+  hasUnsavedChanges = false;
+  persist();
   currentPdfBuffer = null;
   stopTicking();
   switchView(false);
@@ -639,6 +899,9 @@ function attachEvents() {
   elements.plenaryEnd.addEventListener("input", (event) => {
     updatePlenary("endTime", event.target.value);
   });
+  elements.projectName.addEventListener("input", (event) => {
+    updateProjectName(event.target.value);
+  });
 
   elements.addSlotBtn.addEventListener("click", () => {
     state.slots.push(createSequentialSlot());
@@ -709,6 +972,41 @@ function attachEvents() {
   elements.exitPresentationBtn.addEventListener("click", leavePresentationMode);
   elements.resetBtn.addEventListener("click", resetPresentation);
   elements.clearConfigBtn.addEventListener("click", clearConfiguration);
+  elements.shareBtn.addEventListener("click", () => {
+    copyShareLink().catch((error) => {
+      console.error(error);
+      elements.storageStatus.textContent = "Impossible de créer le lien partagé";
+      window.alert(error.message || "Impossible de joindre Supabase.");
+    });
+  });
+  elements.saveBtn.addEventListener("click", () => {
+    saveProject().catch((error) => {
+      console.error(error);
+      elements.storageStatus.textContent = "Impossible de sauvegarder le projet";
+      window.alert(error.message || "Impossible de joindre Supabase.");
+    });
+  });
+  elements.newProjectBtn.addEventListener("click", createNewProject);
+  elements.projectsBtn.addEventListener("click", () => {
+    renderProjects();
+    elements.projectsDialog.showModal();
+  });
+  elements.closeProjectsBtn.addEventListener("click", () => elements.projectsDialog.close());
+  elements.projectsList.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement) || !target.dataset.projectToken) {
+      return;
+    }
+
+    const operation = target.dataset.action === "delete"
+      ? deleteProject(target.dataset.projectToken, target.dataset.projectName)
+      : openProject(target.dataset.projectToken);
+    operation.catch((error) => {
+      console.error(error);
+      elements.storageStatus.textContent = "Impossible de mettre à jour le projet";
+      window.alert(error.message || "Impossible de joindre Supabase.");
+    });
+  });
   elements.fullscreenBtn.addEventListener("click", async () => {
     if (document.fullscreenElement) {
       await document.exitFullscreen();
@@ -754,8 +1052,18 @@ function attachEvents() {
 
 async function bootstrap() {
   attachEvents();
+  try {
+    await loadSharedState();
+  } catch (error) {
+    console.error(error);
+    elements.storageStatus.textContent = "Impossible de charger la plénière partagée";
+    window.alert(error.message || "Impossible de joindre Supabase.");
+  }
   renderConfiguration();
-  if (state.pdfName) {
+  hasUnsavedChanges = !state.remoteToken && hasProjectContent();
+  if (state.remoteToken) {
+    elements.storageStatus.textContent = "Configuration partagée synchronisée";
+  } else if (state.pdfName) {
     elements.storageStatus.textContent = "Configuration locale active";
   }
 }

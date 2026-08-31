@@ -2,6 +2,7 @@ const STORAGE_KEY = "safe-timekeeper-config-v1";
 
 function createDefaultState() {
   return {
+    projectName: "",
     pdfName: "",
     pageCount: 0,
     slots: [],
@@ -19,6 +20,22 @@ function createDefaultState() {
       accruedDebtMs: 0,
       initialDelayMs: 0,
       slotOverrunsMs: {},
+    },
+  };
+}
+
+export function normalizeState(rawState) {
+  const defaultState = createDefaultState();
+  return {
+    ...defaultState,
+    ...rawState,
+    plenary: {
+      ...defaultState.plenary,
+      ...rawState?.plenary,
+    },
+    presentation: {
+      ...defaultState.presentation,
+      ...rawState?.presentation,
     },
   };
 }
@@ -86,14 +103,7 @@ export function loadState() {
       return createDefaultState();
     }
 
-    return {
-      ...createDefaultState(),
-      ...JSON.parse(raw),
-      presentation: {
-        ...createDefaultState().presentation,
-        ...JSON.parse(raw).presentation,
-      },
-    };
+    return normalizeState(JSON.parse(raw));
   } catch (error) {
     console.warn("Impossible de charger la configuration.", error);
     return createDefaultState();
