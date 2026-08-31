@@ -492,7 +492,7 @@ function createSequentialSlot() {
 
   const slot = createSlot(state.pageCount);
   slot.startSlide = nextStartSlide;
-  slot.endSlide = nextStartSlide;
+  slot.endSlide = maxSlide;
   slot.name = state.slots.length === 0 ? slot.name : `Créneau ${state.slots.length + 1}`;
   return slot;
 }

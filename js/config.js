@@ -127,7 +127,7 @@ export function createSlot(pageCount = 0) {
   const lastSlide = pageCount > 0 ? pageCount : 1;
   return {
     id: crypto.randomUUID(),
-    name: "Nouveau créneau",
+    name: "Créneau 1",
     startSlide: 1,
     endSlide: lastSlide,
     durationMinutes: 5,
