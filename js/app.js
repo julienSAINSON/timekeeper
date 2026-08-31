@@ -56,6 +56,7 @@ const elements = {
   newProjectBtn: document.querySelector("#newProjectBtn"),
   projectsBtn: document.querySelector("#projectsBtn"),
   projectsDialog: document.querySelector("#projectsDialog"),
+  strategyDialog: document.querySelector("#strategyDialog"),
   closeProjectsBtn: document.querySelector("#closeProjectsBtn"),
   projectsList: document.querySelector("#projectsList"),
   saveBtn: document.querySelector("#saveBtn"),
@@ -574,20 +575,18 @@ async function renderCurrentSlide() {
 }
 
 function getPresentationSummary() {
-  const slotTimings = getSlotTiming(state.slots);
+  const slotTimings = getSlotTiming(state.slots, state.presentation.slotReductionsMs);
   const plenarySummary = validatePlenary(state.plenary, state.slots);
   const totalPlannedMs = plenarySummary.durationMinutes * 60 * 1000;
   const elapsedMs = getElapsedMs(state.presentation);
-  const inheritedSlotOverrunMs = Math.max(
-    0,
-    state.presentation.accruedDebtMs - state.presentation.initialDelayMs,
-  );
   const currentSlot = getCurrentSlot(slotTimings, state.presentation.currentSlide);
+  const slotStartedElapsedMs = Number(
+    state.presentation.slotStartedElapsedMs[currentSlot?.id] ?? 0,
+  );
   const slotStatus = getSlotStatus(
     currentSlot,
-    elapsedMs,
+    elapsedMs - slotStartedElapsedMs,
     state.presentation.currentSlide,
-    inheritedSlotOverrunMs,
   );
   const totalDebtMs = state.presentation.accruedDebtMs + slotStatus.overrunMs;
   const plannedEnd = new Date();
@@ -605,7 +604,7 @@ function getPresentationSummary() {
     slotStatus,
     totalDebtMs,
     initialDelayMs: state.presentation.initialDelayMs,
-    inheritedSlotOverrunMs,
+    inheritedSlotOverrunMs: 0,
     slotOverrunsMs: state.presentation.slotOverrunsMs,
     unallocatedDurationMs: plenarySummary.unallocatedMinutes * 60 * 1000,
     plannedEnd,
@@ -685,7 +684,7 @@ function stopTicking() {
 }
 
 function captureCompletedSlotDebt(previousSlide, nextSlide) {
-  const slotTimings = getSlotTiming(state.slots);
+  const slotTimings = getSlotTiming(state.slots, state.presentation.slotReductionsMs);
   const previousSlot = getCurrentSlot(slotTimings, previousSlide);
   const nextSlot = getCurrentSlot(slotTimings, nextSlide);
 
@@ -694,13 +693,61 @@ function captureCompletedSlotDebt(previousSlide, nextSlide) {
   }
 
   const elapsedMs = getElapsedMs(state.presentation);
-  const priorSlotOverrunMs = Math.max(
-    0,
-    state.presentation.accruedDebtMs - state.presentation.initialDelayMs,
-  );
-  const lateMs = Math.max(0, elapsedMs - previousSlot.endOffsetMs - priorSlotOverrunMs);
+  const slotStartedElapsedMs = Number(state.presentation.slotStartedElapsedMs[previousSlot.id] ?? 0);
+  const lateMs = Math.max(0, elapsedMs - slotStartedElapsedMs - previousSlot.durationMs);
   state.presentation.slotOverrunsMs[previousSlot.id] = lateMs;
   state.presentation.accruedDebtMs += lateMs;
+  applyOverrunStrategy(state.slots.findIndex((slot) => slot.id === previousSlot.id));
+}
+
+function applyOverrunStrategy(completedSlotIndex) {
+  if (state.presentation.overrunStrategy === "shift-end") {
+    return;
+  }
+
+  const plenarySummary = validatePlenary(state.plenary, state.slots);
+  const targetReductionMs = Math.max(
+    0,
+    state.presentation.accruedDebtMs - plenarySummary.unallocatedMinutes * 60 * 1000,
+  );
+  const appliedReductionMs = Object.values(state.presentation.slotReductionsMs).reduce(
+    (total, reduction) => total + Number(reduction || 0),
+    0,
+  );
+  let remainingReductionMs = Math.max(0, targetReductionMs - appliedReductionMs);
+  let candidates = state.slots.slice(completedSlotIndex + 1);
+  const availableReduction = (slot) => Math.max(
+    0,
+    Number(slot.durationMinutes) * 60 * 1000 - Number(state.presentation.slotReductionsMs[slot.id] || 0) - 1000,
+  );
+
+  if (state.presentation.overrunStrategy === "last") {
+    candidates = candidates.reverse();
+  }
+
+  if (state.presentation.overrunStrategy === "proportional") {
+    const availableMs = candidates.reduce((total, slot) => total + availableReduction(slot), 0);
+    if (availableMs === 0) {
+      return;
+    }
+    candidates.forEach((slot) => {
+      const reduction = Math.min(
+        availableReduction(slot),
+        Math.round((remainingReductionMs * availableReduction(slot)) / availableMs),
+      );
+      state.presentation.slotReductionsMs[slot.id] =
+        Number(state.presentation.slotReductionsMs[slot.id] || 0) + reduction;
+      remainingReductionMs -= reduction;
+    });
+    return;
+  }
+
+  candidates.forEach((slot) => {
+    const reduction = Math.min(availableReduction(slot), remainingReductionMs);
+    state.presentation.slotReductionsMs[slot.id] =
+      Number(state.presentation.slotReductionsMs[slot.id] || 0) + reduction;
+    remainingReductionMs -= reduction;
+  });
 }
 
 async function enterPresentationMode() {
@@ -721,6 +768,13 @@ async function enterPresentationMode() {
   state.presentation.isPaused = false;
   state.presentation.currentSlide = Math.min(state.presentation.currentSlide || 1, state.pageCount);
   state.presentation.startedAt ??= Date.now();
+  const initialSlot = getCurrentSlot(
+    getSlotTiming(state.slots, state.presentation.slotReductionsMs),
+    state.presentation.currentSlide,
+  );
+  if (initialSlot && state.presentation.slotStartedElapsedMs[initialSlot.id] === undefined) {
+    state.presentation.slotStartedElapsedMs[initialSlot.id] = getElapsedMs(state.presentation);
+  }
   state.presentation.pausedAt = null;
   state.presentation.totalPausedMs = state.presentation.totalPausedMs || 0;
   elements.pauseBtn.disabled = false;
@@ -748,6 +802,13 @@ function nextSlide() {
 
   captureCompletedSlotDebt(state.presentation.currentSlide, state.presentation.currentSlide + 1);
   state.presentation.currentSlide += 1;
+  const nextSlot = getCurrentSlot(
+    getSlotTiming(state.slots, state.presentation.slotReductionsMs),
+    state.presentation.currentSlide,
+  );
+  if (nextSlot && state.presentation.slotStartedElapsedMs[nextSlot.id] === undefined) {
+    state.presentation.slotStartedElapsedMs[nextSlot.id] = getElapsedMs(state.presentation);
+  }
   persist();
   renderCurrentSlide();
   renderPresentationMetrics();
@@ -804,6 +865,9 @@ function resetPresentation() {
     accruedDebtMs: 0,
     initialDelayMs: 0,
     slotOverrunsMs: {},
+    slotReductionsMs: {},
+    slotStartedElapsedMs: {},
+    overrunStrategy: "next",
   };
   elements.pauseBtn.disabled = false;
   elements.resumeBtn.disabled = true;
@@ -861,6 +925,9 @@ async function handlePdfImport(event) {
       accruedDebtMs: 0,
       initialDelayMs: 0,
       slotOverrunsMs: {},
+      slotReductionsMs: {},
+      slotStartedElapsedMs: {},
+      overrunStrategy: "next",
     };
 
     if (state.slots.length === 0) {
@@ -955,6 +1022,14 @@ function attachEvents() {
   });
 
   elements.startPresentationBtn.addEventListener("click", () => {
+    elements.strategyDialog.showModal();
+  });
+  elements.strategyDialog.addEventListener("close", () => {
+    if (elements.strategyDialog.returnValue !== "confirm") {
+      return;
+    }
+    const selectedStrategy = document.querySelector('input[name="overrunStrategy"]:checked');
+    state.presentation.overrunStrategy = selectedStrategy?.value || "next";
     enterPresentationMode().catch((error) => {
       console.error(error);
       window.alert(

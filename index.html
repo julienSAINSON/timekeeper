@@ -38,6 +38,34 @@
         <div id="projectsList" class="projects-list"></div>
       </dialog>
 
+      <dialog id="strategyDialog" class="projects-dialog strategy-dialog">
+        <form method="dialog">
+          <h2>Gestion des dépassements</h2>
+          <p class="lead">Après consommation du temps non alloué, choisissez les créneaux à réduire pour conserver l'heure de fin.</p>
+          <fieldset class="strategy-options">
+            <label class="strategy-option">
+              <input type="radio" name="overrunStrategy" value="next" checked />
+              <span><strong>Créneaux suivants</strong><small>Réduit le prochain créneau, puis les suivants si nécessaire.</small></span>
+            </label>
+            <label class="strategy-option">
+              <input type="radio" name="overrunStrategy" value="last" />
+              <span><strong>Derniers créneaux</strong><small>Réduit le dernier créneau, puis remonte si nécessaire.</small></span>
+            </label>
+            <label class="strategy-option">
+              <input type="radio" name="overrunStrategy" value="proportional" />
+              <span><strong>Répartition proportionnelle</strong><small>Réduit les créneaux restants au prorata de leur durée.</small></span>
+            </label>
+            <label class="strategy-option">
+              <input type="radio" name="overrunStrategy" value="shift-end" />
+              <span><strong>Décaler l'heure de fin</strong><small>Conserve les créneaux futurs et prolonge le créneau en cours.</small></span>
+            </label>
+          </fieldset>
+          <div class="dialog-actions">
+            <button class="primary-button" type="submit" value="confirm">Lancer la présentation</button>
+          </div>
+        </form>
+      </dialog>
+
       <main>
         <section id="configView" class="view active">
           <div class="hero-card">

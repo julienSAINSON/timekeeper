@@ -21,19 +21,23 @@ export function formatHour(date) {
   });
 }
 
-export function getSlotTiming(slots) {
+export function getSlotTiming(slots, slotReductionsMs = {}) {
   let elapsedMinutes = 0;
 
   return slots.map((slot) => {
     const startOffsetMs = elapsedMinutes * 60 * 1000;
-    elapsedMinutes += Number(slot.durationMinutes);
+    const durationMs = Math.max(
+      1000,
+      Number(slot.durationMinutes) * 60 * 1000 - Number(slotReductionsMs[slot.id] || 0),
+    );
+    elapsedMinutes += durationMs / (60 * 1000);
     const endOffsetMs = elapsedMinutes * 60 * 1000;
 
     return {
       ...slot,
       startOffsetMs,
       endOffsetMs,
-      durationMs: Number(slot.durationMinutes) * 60 * 1000,
+      durationMs,
     };
   });
 }
@@ -44,7 +48,7 @@ export function getCurrentSlot(slotTimings, currentSlide) {
   ) ?? null;
 }
 
-export function getSlotStatus(slot, elapsedMs, currentSlide, inheritedDebtMs = 0) {
+export function getSlotStatus(slot, slotElapsedMs, currentSlide) {
   if (!slot) {
     return {
       tone: "ok",
@@ -54,7 +58,7 @@ export function getSlotStatus(slot, elapsedMs, currentSlide, inheritedDebtMs = 0
     };
   }
 
-  const slotElapsedMs = Math.max(0, elapsedMs - slot.startOffsetMs - inheritedDebtMs);
+  slotElapsedMs = Math.max(0, slotElapsedMs);
   const progress = slot.durationMs > 0 ? slotElapsedMs / slot.durationMs : 0;
   const stillOnAssignedSlides = currentSlide >= slot.startSlide && currentSlide <= slot.endSlide;
   const overrunMs = Math.max(0, slotElapsedMs - slot.durationMs);

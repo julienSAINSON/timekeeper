@@ -21,6 +21,9 @@ function createDefaultState() {
       accruedDebtMs: 0,
       initialDelayMs: 0,
       slotOverrunsMs: {},
+      slotReductionsMs: {},
+      slotStartedElapsedMs: {},
+      overrunStrategy: "next",
     },
   };
 }
