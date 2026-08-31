@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SAFe Timekeeper</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./css/style.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Pleniere SAFe</p>
+          <h1>SAFe Timekeeper</h1>
+        </div>
+        <div class="topbar-actions">
+          <span id="storageStatus" class="storage-status">Configuration locale active</span>
+          <button id="clearConfigBtn" class="ghost-button" type="button">Effacer la configuration</button>
+        </div>
+      </header>
+
+      <main>
+        <section id="configView" class="view active">
+          <div class="hero-card">
+            <div>
+              <p class="eyebrow">Mode Configuration</p>
+              <h2>Préparer la plénière</h2>
+              <p class="lead">
+                Importez le PDF, définissez les créneaux et vérifiez rapidement que toute la présentation est couverte.
+              </p>
+            </div>
+            <button id="startPresentationBtn" class="primary-button" type="button" disabled>
+              ▶ Démarrer la plénière
+            </button>
+          </div>
+
+          <div class="config-grid">
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Étape 1</p>
+                  <h3>Présentation PDF</h3>
+                </div>
+              </div>
+
+              <label class="upload-card" for="pdfInput">
+                <input id="pdfInput" type="file" accept="application/pdf" />
+                <span class="upload-title">Importer un PDF</span>
+                <span class="upload-subtitle">Le fichier reste dans le navigateur et sera restauré au prochain chargement.</span>
+              </label>
+
+              <div class="stats-row">
+                <div class="stat-card">
+                  <span class="stat-label">Nom du fichier</span>
+                  <strong id="pdfName">Aucun PDF importé</strong>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">Nombre de slides</span>
+                  <strong id="pageCount">0</strong>
+                </div>
+              </div>
+
+              <div class="plenary-schedule">
+                <div class="panel-header">
+                  <div>
+                    <p class="eyebrow">Étape 2</p>
+                    <h3>Horaires de la plénière</h3>
+                  </div>
+                </div>
+                <div class="schedule-fields">
+                  <div class="field">
+                    <label for="plenaryStart">Début</label>
+                    <input id="plenaryStart" type="time" step="60" required />
+                  </div>
+                  <div class="field">
+                    <label for="plenaryEnd">Fin</label>
+                    <input id="plenaryEnd" type="time" step="60" required />
+                  </div>
+                </div>
+                <div class="stats-row">
+                  <div class="stat-card">
+                    <span class="stat-label">Durée de la plénière</span>
+                    <strong id="plenaryDuration">-- min</strong>
+                  </div>
+                  <div class="stat-card">
+                    <span class="stat-label">Temps non dédié aux slides</span>
+                    <strong id="unallocatedDuration">-- min</strong>
+                  </div>
+                </div>
+                <div id="plenaryValidation" class="validation-list"></div>
+              </div>
+
+              <div id="importProgress" class="progress-card hidden" aria-live="polite">
+                <div class="progress-header">
+                  <span id="progressLabel">Préparation de l'import…</span>
+                  <strong id="progressValue">0 %</strong>
+                </div>
+                <div class="progress-bar">
+                  <div id="progressFill" class="progress-fill"></div>
+                </div>
+              </div>
+
+              <div id="pdfPreviewState" class="empty-state">
+                Le rendu du PDF sera disponible en mode présentation.
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Étape 3</p>
+                  <h3>Créneaux</h3>
+                </div>
+                <button id="addSlotBtn" class="secondary-button" type="button">Ajouter un créneau</button>
+              </div>
+
+              <div id="slotsList" class="slots-list"></div>
+
+              <div class="summary-grid">
+                <div class="stat-card">
+                  <span class="stat-label">Temps dédié aux slides</span>
+                  <strong id="totalDuration">0 min</strong>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">Slides couvertes</span>
+                  <strong id="coverageSummary">0 / 0</strong>
+                </div>
+              </div>
+
+              <div id="validationList" class="validation-list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="presentationView" class="view presentation-view">
+          <div class="presentation-stage">
+            <div id="pdfStage" class="pdf-stage">
+              <canvas id="pdfCanvas"></canvas>
+              <div id="pdfLoading" class="pdf-overlay">Chargement du PDF…</div>
+              <div id="slideCounter" class="slide-counter">Slide 0 / 0</div>
+            </div>
+          </div>
+
+          <aside class="timeline-panel">
+            <div id="presentationDetails" class="presentation-details" hidden>
+              <div class="presentation-toolbar">
+                <button id="prevSlideBtn" class="ghost-button" type="button">← Précédente</button>
+                <button id="nextSlideBtn" class="ghost-button" type="button">Suivante →</button>
+                <button id="pauseBtn" class="secondary-button" type="button">Pause</button>
+                <button id="resumeBtn" class="secondary-button" type="button" disabled>Reprendre</button>
+                <button id="fullscreenBtn" class="ghost-button" type="button">Plein écran</button>
+                <button id="exitPresentationBtn" class="ghost-button" type="button">Quitter</button>
+                <button id="resetBtn" class="danger-button" type="button">Reset</button>
+              </div>
+
+              <div class="headline-metrics">
+                <div class="metric-large">
+                  <span class="metric-label">Temps global</span>
+                  <strong id="globalTimer">00:00 / 00:00</strong>
+                </div>
+                <div id="debtBadge" class="metric-alert status-ok">
+                  <span class="metric-label">Dette de temps</span>
+                  <strong id="timeDebt">+00:00</strong>
+                </div>
+                <div class="metric-duo">
+                  <div>
+                    <span class="metric-label">Créneau actuel</span>
+                    <strong id="currentSlotName">En attente</strong>
+                  </div>
+                  <div>
+                    <span class="metric-label">Temps du créneau</span>
+                    <strong id="slotTimer">00:00 / 00:00</strong>
+                  </div>
+                  <div>
+                    <span class="metric-label">État</span>
+                    <strong id="slotStatusText">Prêt</strong>
+                  </div>
+                  <div id="estimatedEndMetric">
+                    <span class="metric-label">Fin estimée</span>
+                    <strong id="estimatedEnd">--:--</strong>
+                  </div>
+                </div>
+              </div>
+              <div class="presentation-help">
+                Raccourcis: ← → Espace pour naviguer, <kbd>P</kbd> pause/reprise, <kbd>F</kbd> plein écran.
+              </div>
+            </div>
+
+            <button
+              id="togglePresentationDetails"
+              class="presentation-details-toggle"
+              type="button"
+              aria-expanded="false"
+              aria-label="Afficher les informations de présentation"
+              title="Afficher les informations de présentation"
+            >▲</button>
+
+            <div class="timeline-wrapper">
+              <div class="timeline-scale">
+                <span id="plannedStartLabel">00:00</span>
+                <span id="plannedEndLabel">00:00</span>
+              </div>
+              <div id="timelineTrack" class="timeline-track"></div>
+              <div id="nowMarker" class="now-marker">
+                <span>Maintenant</span>
+              </div>
+            </div>
+
+          </aside>
+        </section>
+      </main>
+    </div>
+
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.10.111/pdf.min.js"
+      data-pdfjs="true"
+    ></script>
+    <script type="module" src="./js/app.js"></script>
+  </body>
+</html>
