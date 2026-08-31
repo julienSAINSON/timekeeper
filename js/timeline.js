@@ -20,14 +20,15 @@ export function renderTimeline(
   slotTimings,
   elapsedMs,
   currentSlide,
-  inheritedDebtMs = 0,
+  totalDebtMs = 0,
   initialDelayMs = 0,
   slotOverrunsMs = {},
   currentOverrunMs = 0,
   totalDurationMs = slotTimings.at(-1)?.endOffsetMs ?? 1,
   unallocatedDurationMs = 0,
+  slotReductionsMs = {},
 ) {
-  const totalOverrunMs = initialDelayMs + inheritedDebtMs + currentOverrunMs;
+  const totalOverrunMs = totalDebtMs;
   const overflowDurationMs = Math.max(0, totalOverrunMs - unallocatedDurationMs);
   const displayDurationMs = totalDurationMs + overflowDurationMs;
   const remainingUnallocatedDurationMs = Math.max(0, unallocatedDurationMs - totalOverrunMs);
@@ -50,7 +51,7 @@ export function renderTimeline(
     const isCurrent = currentSlide >= slot.startSlide && currentSlide <= slot.endSlide;
     const slotElapsedMs = Math.max(
       0,
-      elapsedMs - slot.startOffsetMs - (isCurrent ? inheritedDebtMs : 0),
+      elapsedMs - slot.startOffsetMs,
     );
     const isCompleted = elapsedMs >= slot.endOffsetMs || currentSlide > slot.endSlide;
     const overrunMs = isCurrent ? Math.max(0, slotElapsedMs - slot.durationMs) : 0;
@@ -69,8 +70,11 @@ export function renderTimeline(
     item.style.width = width;
     name.textContent = slot.name;
     slides.textContent = `Slides ${slot.startSlide} → ${slot.endSlide}`;
-    duration.textContent =
-      slotOverrunMs > 0
+    const reductionMs = Number(slotReductionsMs[slot.id] || 0);
+    const originalDurationMs = Number(slot.durationMinutes) * 60 * 1000;
+    duration.textContent = reductionMs > 0
+      ? `${formatClock(originalDurationMs)} → ${formatClock(slot.durationMs)}`
+      : slotOverrunMs > 0
         ? `${formatClock(slot.durationMs)} + ${formatClock(slotOverrunMs)}`
         : formatClock(slot.durationMs);
     item.append(name, slides, duration);

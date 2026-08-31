@@ -614,6 +614,15 @@ function getPresentationSummary() {
 }
 
 function renderPresentationMetrics() {
+  let presentationSummary = getPresentationSummary();
+  if (presentationSummary.currentSlot && presentationSummary.slotStatus.overrunMs > 0) {
+    applyOverrunStrategy(
+      state.slots.findIndex((slot) => slot.id === presentationSummary.currentSlot.id),
+      presentationSummary.totalDebtMs,
+    );
+    presentationSummary = getPresentationSummary();
+  }
+
   const {
     slotTimings,
     totalPlannedMs,
@@ -622,13 +631,12 @@ function renderPresentationMetrics() {
     slotStatus,
     totalDebtMs,
     initialDelayMs,
-    inheritedSlotOverrunMs,
     slotOverrunsMs,
     unallocatedDurationMs,
     plannedEnd,
     estimatedEnd,
     scheduleExtended,
-  } = getPresentationSummary();
+  } = presentationSummary;
 
   elements.globalTimer.textContent = `${formatClock(elapsedMs)} / ${formatClock(totalPlannedMs)}`;
   elements.currentSlotName.textContent = currentSlot?.name ?? "Hors plan";
@@ -660,12 +668,13 @@ function renderPresentationMetrics() {
     slotTimings,
     elapsedMs,
     state.presentation.currentSlide,
-    inheritedSlotOverrunMs,
+    totalDebtMs,
     initialDelayMs,
     slotOverrunsMs,
     slotStatus.overrunMs,
     totalPlannedMs,
     unallocatedDurationMs,
+    state.presentation.slotReductionsMs,
   );
 }
 
@@ -700,7 +709,7 @@ function captureCompletedSlotDebt(previousSlide, nextSlide) {
   applyOverrunStrategy(state.slots.findIndex((slot) => slot.id === previousSlot.id));
 }
 
-function applyOverrunStrategy(completedSlotIndex) {
+function applyOverrunStrategy(completedSlotIndex, totalDebtMs = state.presentation.accruedDebtMs) {
   if (state.presentation.overrunStrategy === "shift-end") {
     return;
   }
@@ -708,7 +717,7 @@ function applyOverrunStrategy(completedSlotIndex) {
   const plenarySummary = validatePlenary(state.plenary, state.slots);
   const targetReductionMs = Math.max(
     0,
-    state.presentation.accruedDebtMs - plenarySummary.unallocatedMinutes * 60 * 1000,
+    totalDebtMs - plenarySummary.unallocatedMinutes * 60 * 1000,
   );
   const appliedReductionMs = Object.values(state.presentation.slotReductionsMs).reduce(
     (total, reduction) => total + Number(reduction || 0),
@@ -730,15 +739,19 @@ function applyOverrunStrategy(completedSlotIndex) {
     if (availableMs === 0) {
       return;
     }
-    candidates.forEach((slot) => {
+    let allocatedReductionMs = 0;
+    candidates.forEach((slot, index) => {
       const reduction = Math.min(
         availableReduction(slot),
-        Math.round((remainingReductionMs * availableReduction(slot)) / availableMs),
+        index === candidates.length - 1
+          ? Math.max(0, remainingReductionMs - allocatedReductionMs)
+          : Math.round((remainingReductionMs * availableReduction(slot)) / availableMs),
       );
       state.presentation.slotReductionsMs[slot.id] =
         Number(state.presentation.slotReductionsMs[slot.id] || 0) + reduction;
-      remainingReductionMs -= reduction;
+      allocatedReductionMs += reduction;
     });
+    remainingReductionMs -= allocatedReductionMs;
     return;
   }
 
