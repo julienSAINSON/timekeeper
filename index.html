@@ -21,6 +21,7 @@
         </div>
         <div class="topbar-actions">
           <span id="storageStatus" class="storage-status">Configuration locale active</span>
+          <button id="tutorialBtn" class="ghost-button" type="button">Tutoriel</button>
           <button id="newProjectBtn" class="ghost-button" type="button">Nouveau projet</button>
           <button id="projectsBtn" class="ghost-button" type="button">Mes projets</button>
           <button id="saveBtn" class="primary-button" type="button">Sauvegarder</button>
@@ -75,6 +76,23 @@
           </div>
         </form>
       </dialog>
+
+      <div id="tutorialOverlay" class="tutorial-overlay" hidden aria-live="polite">
+        <div id="tutorialShadeTop" class="tutorial-shade"></div>
+        <div id="tutorialShadeRight" class="tutorial-shade"></div>
+        <div id="tutorialShadeBottom" class="tutorial-shade"></div>
+        <div id="tutorialShadeLeft" class="tutorial-shade"></div>
+        <div id="tutorialTooltip" class="tutorial-tooltip" role="dialog" aria-modal="true" aria-labelledby="tutorialTitle">
+          <button id="closeTutorialBtn" class="dialog-close-button tutorial-close-button" type="button" aria-label="Fermer le tutoriel" title="Fermer">&times;</button>
+          <p id="tutorialProgress" class="eyebrow"></p>
+          <h2 id="tutorialTitle"></h2>
+          <p id="tutorialDescription" class="lead"></p>
+          <div class="dialog-actions tutorial-actions">
+            <button id="tutorialPreviousBtn" class="ghost-button" type="button">Précédent</button>
+            <button id="tutorialNextBtn" class="primary-button" type="button">Suivant</button>
+          </div>
+        </div>
+      </div>
 
       <main>
         <section id="configView" class="view active">
@@ -169,7 +187,7 @@
               </div>
             </section>
 
-            <section class="panel">
+            <section id="slotsPanel" class="panel">
               <div class="panel-header">
                 <div>
                   <p class="eyebrow">Étape 3</p>

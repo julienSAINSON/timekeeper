@@ -34,6 +34,38 @@ let currentPdfBuffer = null;
 let hasUnsavedChanges = false;
 let sideInfoIdleHandle = null;
 let savedProjectName = state.remoteToken ? state.projectName : "";
+let tutorialStepIndex = 0;
+
+const tutorialSteps = [
+  {
+    target: "#projectName",
+    title: "Nommez votre projet",
+    description: "Donnez un nom reconnaissable à votre plénière avant de la sauvegarder.",
+  },
+  {
+    target: "#pdfUploadCard",
+    title: "Importez la présentation",
+    description: "Ajoutez le PDF dont les slides seront affichées pendant la plénière.",
+  },
+  {
+    target: ".plenary-schedule",
+    title: "Définissez l'horaire",
+    description: "Indiquez l'heure de début et la durée totale de la réunion.",
+    scrollBlock: "start",
+    tooltipPlacement: "above",
+  },
+  {
+    target: "#slotsPanel",
+    title: "Organisez les créneaux",
+    description: "Ajoutez les séquences, associez-leur des slides et attribuez leur durée.",
+    tooltipPlacement: "left",
+  },
+  {
+    target: "#startPresentationBtn",
+    title: "Lancez la plénière",
+    description: "Quand la configuration est complète, démarrez la présentation et suivez le temps en direct.",
+  },
+];
 
 const elements = {
   configView: document.querySelector("#configView"),
@@ -57,6 +89,19 @@ const elements = {
   startPresentationBtn: document.querySelector("#startPresentationBtn"),
   startPresentationReason: document.querySelector("#startPresentationReason"),
   addSlotBtn: document.querySelector("#addSlotBtn"),
+  tutorialBtn: document.querySelector("#tutorialBtn"),
+  tutorialOverlay: document.querySelector("#tutorialOverlay"),
+  tutorialShadeTop: document.querySelector("#tutorialShadeTop"),
+  tutorialShadeRight: document.querySelector("#tutorialShadeRight"),
+  tutorialShadeBottom: document.querySelector("#tutorialShadeBottom"),
+  tutorialShadeLeft: document.querySelector("#tutorialShadeLeft"),
+  tutorialTooltip: document.querySelector("#tutorialTooltip"),
+  tutorialProgress: document.querySelector("#tutorialProgress"),
+  tutorialTitle: document.querySelector("#tutorialTitle"),
+  tutorialDescription: document.querySelector("#tutorialDescription"),
+  tutorialPreviousBtn: document.querySelector("#tutorialPreviousBtn"),
+  tutorialNextBtn: document.querySelector("#tutorialNextBtn"),
+  closeTutorialBtn: document.querySelector("#closeTutorialBtn"),
   newProjectBtn: document.querySelector("#newProjectBtn"),
   projectsBtn: document.querySelector("#projectsBtn"),
   projectsDialog: document.querySelector("#projectsDialog"),
@@ -114,6 +159,111 @@ function persist() {
 
 function updateSaveButton() {
   elements.saveBtn.disabled = !hasUnsavedChanges;
+}
+
+function clearTutorialHighlight() {
+  const highlightedTarget = document.querySelector(".tutorial-target");
+  if (!highlightedTarget) {
+    return;
+  }
+  highlightedTarget.classList.remove("tutorial-target");
+}
+
+function positionTutorialShades(target) {
+  const bounds = target.getBoundingClientRect();
+  const spotlightPadding = 14;
+  const spotlightTop = Math.max(0, bounds.top - spotlightPadding);
+  const spotlightRight = Math.min(window.innerWidth, bounds.right + spotlightPadding);
+  const spotlightBottom = Math.min(window.innerHeight, bounds.bottom + spotlightPadding);
+  const spotlightLeft = Math.max(0, bounds.left - spotlightPadding);
+  const setBounds = (element, top, right, bottom, left) => {
+    element.style.top = `${top}px`;
+    element.style.right = `${right}px`;
+    element.style.bottom = `${bottom}px`;
+    element.style.left = `${left}px`;
+  };
+
+  setBounds(elements.tutorialShadeTop, 0, 0, window.innerHeight - spotlightTop, 0);
+  setBounds(elements.tutorialShadeRight, spotlightTop, 0, window.innerHeight - spotlightBottom, spotlightRight);
+  setBounds(elements.tutorialShadeBottom, spotlightBottom, 0, 0, 0);
+  setBounds(elements.tutorialShadeLeft, spotlightTop, window.innerWidth - spotlightLeft, window.innerHeight - spotlightBottom, 0);
+}
+
+function positionTutorialTooltip(target, placement = "auto") {
+  const targetBounds = target.getBoundingClientRect();
+  const tooltipBounds = elements.tutorialTooltip.getBoundingClientRect();
+  const horizontalPadding = 16;
+  const preferredTop = targetBounds.bottom + 18;
+  const fallbackTop = preferredTop + tooltipBounds.height <= window.innerHeight - horizontalPadding
+    ? preferredTop
+    : Math.max(horizontalPadding, targetBounds.top - tooltipBounds.height - 18);
+  const fallbackLeft = Math.min(
+    Math.max(horizontalPadding, targetBounds.left),
+    window.innerWidth - tooltipBounds.width - horizontalPadding,
+  );
+  const preferredLeft = targetBounds.left - tooltipBounds.width - 18;
+  const useLeftPlacement = placement === "left" && preferredLeft >= horizontalPadding;
+  const preferredAbove = targetBounds.top - tooltipBounds.height - 18;
+  const useAbovePlacement = placement === "above" && preferredAbove >= horizontalPadding;
+  const top = useLeftPlacement
+    ? Math.min(
+      Math.max(horizontalPadding, targetBounds.top),
+      window.innerHeight - tooltipBounds.height - horizontalPadding,
+    )
+    : useAbovePlacement
+      ? preferredAbove
+      : fallbackTop;
+  const left = useLeftPlacement ? preferredLeft : fallbackLeft;
+  elements.tutorialTooltip.style.top = `${top}px`;
+  elements.tutorialTooltip.style.left = `${left}px`;
+}
+
+function renderTutorialStep() {
+  clearTutorialHighlight();
+  const step = tutorialSteps[tutorialStepIndex];
+  const target = document.querySelector(step.target);
+  if (!target) {
+    closeTutorial();
+    return;
+  }
+
+  target.scrollIntoView({ block: step.scrollBlock || "center", inline: "nearest", behavior: "auto" });
+  target.classList.add("tutorial-target");
+  elements.tutorialProgress.textContent = `Étape ${tutorialStepIndex + 1} sur ${tutorialSteps.length}`;
+  elements.tutorialTitle.textContent = step.title;
+  elements.tutorialDescription.textContent = step.description;
+  elements.tutorialPreviousBtn.disabled = tutorialStepIndex === 0;
+  elements.tutorialNextBtn.textContent = tutorialStepIndex === tutorialSteps.length - 1 ? "Terminer" : "Suivant";
+  positionTutorialShades(target);
+  positionTutorialTooltip(target, step.tooltipPlacement);
+}
+
+function openTutorial() {
+  if (elements.presentationView.classList.contains("active")) {
+    leavePresentationMode();
+  }
+  tutorialStepIndex = 0;
+  elements.tutorialOverlay.hidden = false;
+  renderTutorialStep();
+  elements.tutorialNextBtn.focus();
+}
+
+function closeTutorial() {
+  clearTutorialHighlight();
+  elements.tutorialOverlay.hidden = true;
+  elements.tutorialTooltip.style.removeProperty("top");
+  elements.tutorialTooltip.style.removeProperty("left");
+  elements.tutorialBtn.focus();
+}
+
+function goToTutorialStep(offset) {
+  const nextStepIndex = tutorialStepIndex + offset;
+  if (nextStepIndex >= tutorialSteps.length) {
+    closeTutorial();
+    return;
+  }
+  tutorialStepIndex = Math.max(0, nextStepIndex);
+  renderTutorialStep();
 }
 
 function chooseRenamedProjectDestination() {
@@ -1138,6 +1288,10 @@ function attachEvents() {
   elements.exitPresentationBtn.addEventListener("click", leavePresentationMode);
   elements.resetBtn.addEventListener("click", resetPresentation);
   elements.clearConfigBtn.addEventListener("click", clearConfiguration);
+  elements.tutorialBtn.addEventListener("click", openTutorial);
+  elements.closeTutorialBtn.addEventListener("click", closeTutorial);
+  elements.tutorialPreviousBtn.addEventListener("click", () => goToTutorialStep(-1));
+  elements.tutorialNextBtn.addEventListener("click", () => goToTutorialStep(1));
   elements.saveBtn.addEventListener("click", () => {
     saveProject().catch((error) => {
       console.error(error);
@@ -1175,6 +1329,13 @@ function attachEvents() {
   });
 
   window.addEventListener("resize", () => {
+    if (!elements.tutorialOverlay.hidden) {
+      const target = document.querySelector(".tutorial-target");
+      if (target) {
+        positionTutorialShades(target);
+        positionTutorialTooltip(target, tutorialSteps[tutorialStepIndex].tooltipPlacement);
+      }
+    }
     if (elements.presentationView.classList.contains("active")) {
       renderCurrentSlide().catch(console.error);
     }
@@ -1197,6 +1358,17 @@ function attachEvents() {
   });
 
   document.addEventListener("keydown", (event) => {
+    if (!elements.tutorialOverlay.hidden) {
+      if (event.key === "Escape") {
+        closeTutorial();
+      } else if (event.key === "ArrowRight") {
+        goToTutorialStep(1);
+      } else if (event.key === "ArrowLeft") {
+        goToTutorialStep(-1);
+      }
+      return;
+    }
+
     if (isEditableTarget(event.target)) {
       return;
     }
