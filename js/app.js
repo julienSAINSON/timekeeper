@@ -638,6 +638,7 @@ function getPresentationSummary() {
     slotStatus,
     totalDebtMs,
     initialDelayMs: state.presentation.initialDelayMs,
+    initialAdvanceMs: state.presentation.initialAdvanceMs,
     inheritedSlotOverrunMs: 0,
     slotOverrunsMs: state.presentation.slotOverrunsMs,
     unallocatedDurationMs: plenarySummary.unallocatedMinutes * 60 * 1000,
@@ -665,6 +666,7 @@ function renderPresentationMetrics() {
     slotStatus,
     totalDebtMs,
     initialDelayMs,
+    initialAdvanceMs,
     slotOverrunsMs,
     unallocatedDurationMs,
     plannedEnd,
@@ -721,6 +723,7 @@ function renderPresentationMetrics() {
     unallocatedDurationMs,
     state.presentation.slotReductionsMs,
     slotStatus.slotElapsedMs,
+    initialAdvanceMs,
   );
 }
 
@@ -846,7 +849,9 @@ async function enterPresentationMode() {
     const plannedStart = new Date();
     const [startHours, startMinutes] = state.plenary.startTime.split(":").map(Number);
     plannedStart.setHours(startHours, startMinutes, 0, 0);
-    state.presentation.initialDelayMs = Math.max(0, Date.now() - plannedStart.getTime());
+    const startDifferenceMs = Date.now() - plannedStart.getTime();
+    state.presentation.initialDelayMs = Math.max(0, startDifferenceMs);
+    state.presentation.initialAdvanceMs = Math.max(0, -startDifferenceMs);
     state.presentation.accruedDebtMs = state.presentation.initialDelayMs;
     applyOverrunStrategy(-1, state.presentation.initialDelayMs);
   }
@@ -863,7 +868,10 @@ async function enterPresentationMode() {
     state.presentation.currentSlide,
   );
   if (initialSlot && state.presentation.slotStartedElapsedMs[initialSlot.id] === undefined) {
-    state.presentation.slotStartedElapsedMs[initialSlot.id] = getElapsedMs(state.presentation);
+    state.presentation.slotStartedElapsedMs[initialSlot.id] = Math.max(
+      getElapsedMs(state.presentation),
+      state.presentation.initialAdvanceMs,
+    );
   }
   state.presentation.pausedAt = null;
   state.presentation.totalPausedMs = state.presentation.totalPausedMs || 0;
@@ -956,6 +964,7 @@ function resetPresentation() {
     totalPausedMs: 0,
     accruedDebtMs: 0,
     initialDelayMs: 0,
+    initialAdvanceMs: 0,
     slotOverrunsMs: {},
     slotReductionsMs: {},
     slotStartedElapsedMs: {},
@@ -1016,6 +1025,7 @@ async function handlePdfImport(event) {
       totalPausedMs: 0,
       accruedDebtMs: 0,
       initialDelayMs: 0,
+      initialAdvanceMs: 0,
       slotOverrunsMs: {},
       slotReductionsMs: {},
       slotStartedElapsedMs: {},

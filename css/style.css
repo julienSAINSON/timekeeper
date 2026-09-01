@@ -688,6 +688,11 @@ button:disabled {
   border-left: 1px dashed rgba(241, 91, 91, 0.7);
 }
 
+.timeline-slot.start-early {
+  background: rgba(46, 197, 141, 0.28);
+  border-left: 1px dashed rgba(46, 197, 141, 0.65);
+}
+
 .timeline-slot.current.status-ok {
   background: linear-gradient(180deg, rgba(46, 197, 141, 0.32), rgba(46, 197, 141, 0.2));
 }
@@ -945,6 +950,10 @@ body.is-presenting .timeline-slot.current.status-danger,
 body.is-presenting .timeline-slot.late,
 body.is-presenting .timeline-slot.start-delay {
   background: #b42318;
+}
+
+body.is-presenting .timeline-slot.start-early {
+  background: #007a78;
 }
 
 body.is-presenting .timeline-slot.unallocated {

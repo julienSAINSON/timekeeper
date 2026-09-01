@@ -28,12 +28,26 @@ export function renderTimeline(
   unallocatedDurationMs = 0,
   slotReductionsMs = {},
   currentSlotElapsedMs = 0,
+  initialAdvanceMs = 0,
 ) {
   const totalOverrunMs = totalDebtMs;
   const overflowDurationMs = Math.max(0, totalOverrunMs - unallocatedDurationMs);
-  const displayDurationMs = totalDurationMs + overflowDurationMs;
+  const displayDurationMs = totalDurationMs + initialDelayMs + initialAdvanceMs + overflowDurationMs;
   const remainingUnallocatedDurationMs = Math.max(0, unallocatedDurationMs - totalOverrunMs);
   trackElement.innerHTML = "";
+
+  if (initialAdvanceMs > 0) {
+    const item = document.createElement("article");
+    const name = document.createElement("strong");
+    const duration = document.createElement("small");
+
+    item.className = "timeline-slot start-early";
+    item.style.width = `${(initialAdvanceMs / displayDurationMs) * 100}%`;
+    name.textContent = "Démarrage anticipé";
+    duration.textContent = `-${formatClock(initialAdvanceMs)}`;
+    item.append(name, duration);
+    trackElement.appendChild(item);
+  }
 
   if (initialDelayMs > 0) {
     const item = document.createElement("article");
