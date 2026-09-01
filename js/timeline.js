@@ -14,7 +14,7 @@ function slotClass({ isCurrent, isCompleted, tone, overrunMs }) {
   return classes.join(" ");
 }
 
-export function renderTimeline(
+export function renderTimeline({
   trackElement,
   markerElement,
   slotTimings,
@@ -29,7 +29,7 @@ export function renderTimeline(
   slotReductionsMs = {},
   currentSlotElapsedMs = 0,
   initialAdvanceMs = 0,
-) {
+}) {
   const totalOverrunMs = totalDebtMs;
   const overflowDurationMs = Math.max(0, totalOverrunMs - unallocatedDurationMs);
   const remainingInitialAdvanceMs = Math.max(0, initialAdvanceMs - elapsedMs);

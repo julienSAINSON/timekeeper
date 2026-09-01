@@ -5,7 +5,9 @@
   --panel-soft: #f3f8fa;
   --line: rgba(0, 59, 92, 0.18);
   --text: #003b5c;
+  --text-on-strong: #ffffff;
   --muted: #496778;
+  --primary: #003b5c;
   --accent: #ffcd00;
   --accent-strong: #e7ad00;
   --warning: #e87900;
@@ -90,8 +92,12 @@ p {
   border-radius: 8px;
   padding: 20px;
   background: var(--panel-strong);
-  color: var(--text);
+  color: var(--text-on-strong);
   box-shadow: var(--shadow);
+}
+
+.projects-dialog .lead {
+  color: rgba(255, 255, 255, 0.82);
 }
 
 .projects-dialog::backdrop {
@@ -193,6 +199,7 @@ p {
   border-radius: 6px;
   padding: 12px;
   background: var(--panel-soft);
+  color: var(--text);
 }
 
 .project-list-item span {
@@ -227,6 +234,7 @@ p {
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--panel-soft);
+  color: var(--text);
   cursor: pointer;
 }
 

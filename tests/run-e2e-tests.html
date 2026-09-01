@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tests E2E - SAFe Timekeeper</title>
+    <style>
+      body { max-width: 960px; margin: 32px auto; padding: 0 20px; font-family: sans-serif; color: #003b5c; background: #eef5f8; }
+      h1 { margin-bottom: 8px; }
+      #summary { margin: 20px 0; padding: 16px; border-radius: 6px; background: #ffffff; font-weight: 700; }
+      #summary.pass { border-left: 6px solid #007a78; }
+      #summary.fail { border-left: 6px solid #b42318; }
+      #results { display: grid; gap: 8px; padding: 0; list-style: none; }
+      #results li { padding: 12px 16px; border-radius: 4px; background: #ffffff; }
+      #results .pass { border-left: 4px solid #007a78; }
+      #results .fail { border-left: 4px solid #b42318; }
+      .error { display: block; margin-top: 6px; color: #8f1d16; font-family: monospace; white-space: pre-wrap; }
+      #application { width: 1px; height: 1px; border: 0; position: absolute; overflow: hidden; }
+    </style>
+  </head>
+  <body>
+    <h1>Tests E2E SAFe Timekeeper</h1>
+    <p>Le parcours importe la fixture PDF, démarre une présentation, navigue, met en pause, reprend et revient à la configuration.</p>
+    <div id="summary" aria-live="polite">Exécution des tests...</div>
+    <ul id="results"></ul>
+    <iframe id="application" title="Application sous test"></iframe>
+    <script type="module" src="./run-e2e-tests.js"></script>
+  </body>
+</html>

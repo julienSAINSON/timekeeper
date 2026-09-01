@@ -1,6 +1,8 @@
 let pdfDoc = null;
 let renderTask = null;
 let pdfJsReady = null;
+let renderRequestId = 0;
+let documentLoadRequestId = 0;
 
 function ensurePdfJs() {
   if (globalThis.pdfjsLib) {
@@ -50,6 +52,7 @@ function ensurePdfJs() {
 }
 
 export async function loadPdfDocument(dataUrl) {
+  const requestId = ++documentLoadRequestId;
   if (!dataUrl) {
     pdfDoc = null;
     return null;
@@ -75,7 +78,12 @@ export async function loadPdfDocument(dataUrl) {
   });
 
   try {
-    pdfDoc = await Promise.race([loadingTask.promise, timeoutPromise]);
+    const document = await Promise.race([loadingTask.promise, timeoutPromise]);
+    if (requestId !== documentLoadRequestId) {
+      await document.destroy?.();
+      return null;
+    }
+    pdfDoc = document;
     return pdfDoc;
   } finally {
     window.clearTimeout(timeoutHandle);
@@ -91,6 +99,7 @@ export async function renderPage(pageNumber, canvas, containerWidth, containerHe
     return;
   }
 
+  const requestId = ++renderRequestId;
   if (renderTask) {
     try {
       renderTask.cancel();
@@ -100,6 +109,10 @@ export async function renderPage(pageNumber, canvas, containerWidth, containerHe
   }
 
   const page = await pdfDoc.getPage(pageNumber);
+  if (requestId !== renderRequestId) {
+    return;
+  }
+
   const baseViewport = page.getViewport({ scale: 1 });
   const targetWidth = Math.max(1, containerWidth);
   const targetHeight = Math.max(1, containerHeight);
@@ -110,18 +123,21 @@ export async function renderPage(pageNumber, canvas, containerWidth, containerHe
   canvas.width = viewport.width;
   canvas.height = viewport.height;
 
-  renderTask = page.render({
+  const task = page.render({
     canvasContext: context,
     viewport,
   });
+  renderTask = task;
 
   try {
-    await renderTask.promise;
+    await task.promise;
   } catch (error) {
     if (error?.name !== "RenderingCancelledException") {
       throw error;
     }
   } finally {
-    renderTask = null;
+    if (renderTask === task) {
+      renderTask = null;
+    }
   }
 }

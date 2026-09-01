@@ -1,4 +1,5 @@
 import {
+  createDefaultPresentationState,
   getPlenaryEndTime,
   normalizeState,
   validatePlenary,
@@ -11,6 +12,7 @@ import {
   getSlotStatus,
   getSlotTiming,
 } from "../js/timer.js";
+import { calculateSlotReductions } from "../js/overrun.js";
 import { renderTimeline } from "../js/timeline.js";
 
 const results = document.querySelector("#results");
@@ -40,22 +42,22 @@ function renderTestTimeline(options = {}) {
   const marker = document.createElement("div");
   const slots = options.slots || [slot("slot-1", 1, 2, 5)];
   const timings = getSlotTiming(slots, options.slotReductionsMs || {});
-  renderTimeline(
-    track,
-    marker,
-    timings,
-    options.elapsedMs || 0,
-    options.currentSlide || 1,
-    options.totalDebtMs || 0,
-    options.initialDelayMs || 0,
-    options.slotOverrunsMs || {},
-    options.currentOverrunMs || 0,
-    options.totalDurationMs || timings.at(-1).endOffsetMs,
-    options.unallocatedDurationMs || 0,
-    options.slotReductionsMs || {},
-    options.currentSlotElapsedMs || 0,
-    options.initialAdvanceMs || 0,
-  );
+  renderTimeline({
+    trackElement: track,
+    markerElement: marker,
+    slotTimings: timings,
+    elapsedMs: options.elapsedMs || 0,
+    currentSlide: options.currentSlide || 1,
+    totalDebtMs: options.totalDebtMs || 0,
+    initialDelayMs: options.initialDelayMs || 0,
+    slotOverrunsMs: options.slotOverrunsMs || {},
+    currentOverrunMs: options.currentOverrunMs || 0,
+    totalDurationMs: options.totalDurationMs || timings.at(-1).endOffsetMs,
+    unallocatedDurationMs: options.unallocatedDurationMs || 0,
+    slotReductionsMs: options.slotReductionsMs || {},
+    currentSlotElapsedMs: options.currentSlotElapsedMs || 0,
+    initialAdvanceMs: options.initialAdvanceMs || 0,
+  });
   return { track, marker };
 }
 
@@ -69,6 +71,25 @@ test("Normalise un ancien projet et calcule son heure de fin", () => {
 test("Calcule les heures de fin avec passage de minuit", () => {
   equal(getPlenaryEndTime({ startTime: "23:30", durationMinutes: 90 }), "01:00");
   equal(getPlenaryEndTime({ startTime: "23:30", durationMinutes: 0 }), "");
+  equal(getPlenaryEndTime({ startTime: "99:99", durationMinutes: 30 }), "");
+});
+
+test("Crée un état de présentation isolé pour chaque réinitialisation", () => {
+  const firstState = createDefaultPresentationState();
+  const secondState = createDefaultPresentationState();
+  firstState.slotOverrunsMs.slot = 1000;
+  equal(secondState.slotOverrunsMs.slot, undefined);
+});
+
+test("Normalise les créneaux restaurés malformés", () => {
+  const state = normalizeState({
+    slots: [{ id: 1, name: null, startSlide: "2", endSlide: "x", durationMinutes: "5" }],
+  });
+  equal(state.slots[0].id, "slot-1");
+  equal(state.slots[0].name, "");
+  equal(state.slots[0].startSlide, 2);
+  equal(state.slots[0].endSlide, 0);
+  equal(state.slots[0].durationMinutes, 5);
 });
 
 test("Valide une plénière avec du temps non dédié", () => {
@@ -112,6 +133,59 @@ test("Construit les offsets temporels des créneaux", () => {
 test("Respecte la durée minimale d'une seconde après réduction", () => {
   const [timing] = getSlotTiming([slot("a", 1, 1, 1)], { a: 60000 });
   equal(timing.durationMs, 1000);
+});
+
+test("Réduit les créneaux suivants sans muter les réductions existantes", () => {
+  const initialReductions = { next: 60000 };
+  const reductions = calculateSlotReductions({
+    slots: [slot("current", 1, 1, 5), slot("next", 2, 2, 5), slot("last", 3, 3, 5)],
+    completedSlotIndex: 0,
+    totalDebtMs: 180000,
+    unallocatedDurationMs: 0,
+    strategy: "next",
+    slotReductionsMs: initialReductions,
+  });
+  equal(initialReductions.next, 60000);
+  equal(reductions.next, 180000);
+  equal(reductions.last, 0);
+});
+
+test("Réduit les derniers créneaux en priorité", () => {
+  const reductions = calculateSlotReductions({
+    slots: [slot("current", 1, 1, 5), slot("next", 2, 2, 5), slot("last", 3, 3, 10)],
+    completedSlotIndex: 0,
+    totalDebtMs: 180000,
+    unallocatedDurationMs: 0,
+    strategy: "last",
+  });
+  equal(reductions.next, 0);
+  equal(reductions.last, 180000);
+});
+
+test("Répartit proportionnellement les réductions entre les créneaux restants", () => {
+  const reductions = calculateSlotReductions({
+    slots: [slot("current", 1, 1, 5), slot("first", 2, 2, 5), slot("second", 3, 3, 5)],
+    completedSlotIndex: 0,
+    totalDebtMs: 180000,
+    unallocatedDurationMs: 0,
+    strategy: "proportional",
+  });
+  equal(reductions.first, 90000);
+  equal(reductions.second, 90000);
+});
+
+test("Ne réduit aucun créneau lorsque la stratégie décale la fin", () => {
+  const initialReductions = { next: 30000 };
+  const reductions = calculateSlotReductions({
+    slots: [slot("current", 1, 1, 5), slot("next", 2, 2, 5)],
+    completedSlotIndex: 0,
+    totalDebtMs: 60000,
+    unallocatedDurationMs: 0,
+    strategy: "shift-end",
+    slotReductionsMs: initialReductions,
+  });
+  equal(initialReductions.next, 30000);
+  equal(reductions.next, 30000);
 });
 
 test("Retrouve le créneau correspondant à une slide", () => {

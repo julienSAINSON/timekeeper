@@ -1,5 +1,23 @@
 const STORAGE_KEY = "safe-timekeeper-config-v1";
 
+export function createDefaultPresentationState() {
+  return {
+    isRunning: false,
+    isPaused: false,
+    currentSlide: 1,
+    startedAt: null,
+    pausedAt: null,
+    totalPausedMs: 0,
+    accruedDebtMs: 0,
+    initialDelayMs: 0,
+    initialAdvanceMs: 0,
+    slotOverrunsMs: {},
+    slotReductionsMs: {},
+    slotStartedElapsedMs: {},
+    overrunStrategy: "next",
+  };
+}
+
 function createDefaultState() {
   return {
     projectName: "",
@@ -11,22 +29,24 @@ function createDefaultState() {
       endTime: "",
       durationMinutes: "",
     },
-    presentation: {
-      isRunning: false,
-      isPaused: false,
-      currentSlide: 1,
-      startedAt: null,
-      pausedAt: null,
-      totalPausedMs: 0,
-      accruedDebtMs: 0,
-      initialDelayMs: 0,
-      initialAdvanceMs: 0,
-      slotOverrunsMs: {},
-      slotReductionsMs: {},
-      slotStartedElapsedMs: {},
-      overrunStrategy: "next",
-    },
+    presentation: createDefaultPresentationState(),
   };
+}
+
+function normalizeSlots(rawSlots) {
+  if (!Array.isArray(rawSlots)) {
+    return [];
+  }
+
+  return rawSlots.map((rawSlot, index) => ({
+    id: typeof rawSlot?.id === "string" ? rawSlot.id : `slot-${index + 1}`,
+    name: typeof rawSlot?.name === "string" ? rawSlot.name : "",
+    startSlide: Number.isFinite(Number(rawSlot?.startSlide)) ? Number(rawSlot.startSlide) : 0,
+    endSlide: Number.isFinite(Number(rawSlot?.endSlide)) ? Number(rawSlot.endSlide) : 0,
+    durationMinutes: Number.isFinite(Number(rawSlot?.durationMinutes))
+      ? Number(rawSlot.durationMinutes)
+      : 0,
+  }));
 }
 
 export function normalizeState(rawState) {
@@ -48,6 +68,7 @@ export function normalizeState(rawState) {
   return {
     ...defaultState,
     ...rawState,
+    slots: normalizeSlots(rawState?.slots),
     plenary,
     presentation: {
       ...defaultState.presentation,
@@ -58,7 +79,14 @@ export function normalizeState(rawState) {
 
 function timeToMinutes(time) {
   const [hours, minutes] = String(time).split(":").map(Number);
-  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) {
+  if (
+    !Number.isInteger(hours) ||
+    !Number.isInteger(minutes) ||
+    hours < 0 ||
+    hours > 23 ||
+    minutes < 0 ||
+    minutes > 59
+  ) {
     return null;
   }
   return hours * 60 + minutes;

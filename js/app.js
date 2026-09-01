@@ -1,4 +1,5 @@
 import {
+  createDefaultPresentationState,
   createSlot,
   loadState,
   normalizeState,
@@ -17,6 +18,7 @@ import {
   getSlotStatus,
   getSlotTiming,
 } from "./timer.js";
+import { calculateSlotReductions } from "./overrun.js";
 import { renderTimeline } from "./timeline.js";
 import {
   createSharedPlenary,
@@ -33,6 +35,7 @@ let tickHandle = null;
 let currentPdfBuffer = null;
 let hasUnsavedChanges = false;
 let sideInfoIdleHandle = null;
+let pdfImportRequestId = 0;
 let savedProjectName = state.remoteToken ? state.projectName : "";
 let tutorialStepIndex = 0;
 
@@ -152,9 +155,10 @@ const elements = {
 };
 
 function persist() {
+  saveState(state);
   hasUnsavedChanges = true;
   elements.saveBtn.disabled = false;
-  elements.storageStatus.textContent = "Modifications non sauvegardées";
+  elements.storageStatus.textContent = "Configuration locale enregistrée - synchronisation requise";
 }
 
 function updateSaveButton() {
@@ -849,22 +853,22 @@ function renderPresentationMetrics() {
     : state.plenary.endTime;
   elements.plannedEndLabel.classList.toggle("timeline-end-extended", scheduleExtended);
 
-  renderTimeline(
-    elements.timelineTrack,
-    elements.nowMarker,
+  renderTimeline({
+    trackElement: elements.timelineTrack,
+    markerElement: elements.nowMarker,
     slotTimings,
     elapsedMs,
-    state.presentation.currentSlide,
+    currentSlide: state.presentation.currentSlide,
     totalDebtMs,
     initialDelayMs,
     slotOverrunsMs,
-    slotStatus.overrunMs,
-    totalPlannedMs,
+    currentOverrunMs: slotStatus.overrunMs,
+    totalDurationMs: totalPlannedMs,
     unallocatedDurationMs,
-    state.presentation.slotReductionsMs,
-    slotStatus.slotElapsedMs,
+    slotReductionsMs: state.presentation.slotReductionsMs,
+    currentSlotElapsedMs: slotStatus.slotElapsedMs,
     initialAdvanceMs,
-  );
+  });
 }
 
 function startTicking() {
@@ -930,56 +934,14 @@ function captureCompletedSlotDebt(previousSlide, nextSlide) {
 }
 
 function applyOverrunStrategy(completedSlotIndex, totalDebtMs = state.presentation.accruedDebtMs) {
-  if (state.presentation.overrunStrategy === "shift-end") {
-    return;
-  }
-
   const plenarySummary = validatePlenary(state.plenary, state.slots);
-  const targetReductionMs = Math.max(
-    0,
-    totalDebtMs - plenarySummary.unallocatedMinutes * 60 * 1000,
-  );
-  const appliedReductionMs = Object.values(state.presentation.slotReductionsMs).reduce(
-    (total, reduction) => total + Number(reduction || 0),
-    0,
-  );
-  let remainingReductionMs = Math.max(0, targetReductionMs - appliedReductionMs);
-  let candidates = state.slots.slice(completedSlotIndex + 1);
-  const availableReduction = (slot) => Math.max(
-    0,
-    Number(slot.durationMinutes) * 60 * 1000 - Number(state.presentation.slotReductionsMs[slot.id] || 0) - 1000,
-  );
-
-  if (state.presentation.overrunStrategy === "last") {
-    candidates = candidates.reverse();
-  }
-
-  if (state.presentation.overrunStrategy === "proportional") {
-    const availableMs = candidates.reduce((total, slot) => total + availableReduction(slot), 0);
-    if (availableMs === 0) {
-      return;
-    }
-    let allocatedReductionMs = 0;
-    candidates.forEach((slot, index) => {
-      const reduction = Math.min(
-        availableReduction(slot),
-        index === candidates.length - 1
-          ? Math.max(0, remainingReductionMs - allocatedReductionMs)
-          : Math.round((remainingReductionMs * availableReduction(slot)) / availableMs),
-      );
-      state.presentation.slotReductionsMs[slot.id] =
-        Number(state.presentation.slotReductionsMs[slot.id] || 0) + reduction;
-      allocatedReductionMs += reduction;
-    });
-    remainingReductionMs -= allocatedReductionMs;
-    return;
-  }
-
-  candidates.forEach((slot) => {
-    const reduction = Math.min(availableReduction(slot), remainingReductionMs);
-    state.presentation.slotReductionsMs[slot.id] =
-      Number(state.presentation.slotReductionsMs[slot.id] || 0) + reduction;
-    remainingReductionMs -= reduction;
+  state.presentation.slotReductionsMs = calculateSlotReductions({
+    slots: state.slots,
+    completedSlotIndex,
+    totalDebtMs,
+    unallocatedDurationMs: plenarySummary.unallocatedMinutes * 60 * 1000,
+    strategy: state.presentation.overrunStrategy,
+    slotReductionsMs: state.presentation.slotReductionsMs,
   });
 }
 
@@ -1096,21 +1058,7 @@ function resetPresentation() {
     return;
   }
 
-  state.presentation = {
-    isRunning: false,
-    isPaused: false,
-    currentSlide: 1,
-    startedAt: null,
-    pausedAt: null,
-    totalPausedMs: 0,
-    accruedDebtMs: 0,
-    initialDelayMs: 0,
-    initialAdvanceMs: 0,
-    slotOverrunsMs: {},
-    slotReductionsMs: {},
-    slotStartedElapsedMs: {},
-    overrunStrategy: "next",
-  };
+  state.presentation = createDefaultPresentationState();
   elements.pauseBtn.disabled = false;
   elements.resumeBtn.disabled = true;
   persist();
@@ -1147,31 +1095,25 @@ async function handlePdfImport(event) {
     return;
   }
 
+  const requestId = ++pdfImportRequestId;
   try {
     elements.storageStatus.textContent = "Analyse du PDF en cours...";
     setImportProgress(5, "Initialisation de l'import...");
     const buffer = await readFileAsArrayBuffer(file);
-    currentPdfBuffer = new Uint8Array(buffer);
-    state.pdfName = file.name;
+    if (requestId !== pdfImportRequestId) {
+      return;
+    }
+    const pdfBuffer = new Uint8Array(buffer);
 
     setImportProgress(72, "Analyse du document PDF...");
-    const pdf = await loadPdfDocument({ data: currentPdfBuffer });
+    const pdf = await loadPdfDocument({ data: pdfBuffer });
+    if (requestId !== pdfImportRequestId) {
+      return;
+    }
+    currentPdfBuffer = pdfBuffer;
+    state.pdfName = file.name;
     state.pageCount = pdf.numPages;
-    state.presentation = {
-      isRunning: false,
-      isPaused: false,
-      currentSlide: 1,
-      startedAt: null,
-      pausedAt: null,
-      totalPausedMs: 0,
-      accruedDebtMs: 0,
-      initialDelayMs: 0,
-      initialAdvanceMs: 0,
-      slotOverrunsMs: {},
-      slotReductionsMs: {},
-      slotStartedElapsedMs: {},
-      overrunStrategy: "next",
-    };
+    state.presentation = createDefaultPresentationState();
 
     if (state.slots.length === 0) {
       state.slots.push(createSlot(state.pageCount));
@@ -1190,6 +1132,9 @@ async function handlePdfImport(event) {
     renderConfiguration();
     window.setTimeout(hideImportProgress, 600);
   } catch (error) {
+    if (requestId !== pdfImportRequestId) {
+      return;
+    }
     currentPdfBuffer = null;
     hideImportProgress();
     throw error;
@@ -1267,8 +1212,9 @@ function attachEvents() {
   elements.startPresentationBtn.addEventListener("click", () => {
     elements.strategyDialog.showModal();
   });
-  elements.strategyDialog.addEventListener("close", () => {
-    if (elements.strategyDialog.returnValue !== "confirm") {
+  elements.strategyDialog.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement) || target.value !== "confirm") {
       return;
     }
     const selectedStrategy = document.querySelector('input[name="overrunStrategy"]:checked');
