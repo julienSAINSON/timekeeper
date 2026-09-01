@@ -24,10 +24,8 @@
           <button id="newProjectBtn" class="ghost-button" type="button">Nouveau projet</button>
           <button id="projectsBtn" class="ghost-button" type="button">Mes projets</button>
           <button id="saveBtn" class="primary-button" type="button">Sauvegarder</button>
-          <button id="shareBtn" class="secondary-button" type="button">Créer un lien partagé</button>
-          <button id="clearConfigBtn" class="ghost-button" type="button">Effacer la configuration</button>
+          <button id="clearConfigBtn" class="ghost-button" type="button">Réinitialiser le projet en cours</button>
         </div>
-        <input id="shareLink" class="share-link" type="text" readonly aria-label="Lien de plénière partagé" hidden />
       </header>
 
       <dialog id="projectsDialog" class="projects-dialog">
@@ -36,6 +34,18 @@
           <button id="closeProjectsBtn" class="dialog-close-button" type="button" aria-label="Fermer la liste des projets" title="Fermer">&times;</button>
         </div>
         <div id="projectsList" class="projects-list"></div>
+      </dialog>
+
+      <dialog id="projectSaveDialog" class="projects-dialog">
+        <form method="dialog">
+          <h2>Nom du projet modifié</h2>
+          <p class="lead">Choisissez la destination de cette sauvegarde.</p>
+          <div class="dialog-actions">
+            <button class="ghost-button" type="submit" value="cancel">Annuler</button>
+            <button class="secondary-button" type="submit" value="current">Mettre à jour le projet en cours</button>
+            <button class="primary-button" type="submit" value="new">Enregistrer comme nouveau projet</button>
+          </div>
+        </form>
       </dialog>
 
       <dialog id="strategyDialog" class="projects-dialog strategy-dialog">
@@ -80,9 +90,12 @@
               <label for="projectName">Nom du projet</label>
               <input id="projectName" type="text" maxlength="100" placeholder="Ex. PI Planning - Septembre" />
             </div>
-            <button id="startPresentationBtn" class="primary-button" type="button" disabled>
-              ▶ Démarrer la plénière
-            </button>
+            <div class="start-presentation-action">
+              <button id="startPresentationBtn" class="primary-button" type="button" disabled>
+                ▶ Démarrer la plénière
+              </button>
+              <span id="startPresentationReason" class="start-presentation-reason" aria-live="polite"></span>
+            </div>
           </div>
 
           <div class="config-grid">
@@ -94,10 +107,10 @@
                 </div>
               </div>
 
-              <label class="upload-card" for="pdfInput">
+              <label id="pdfUploadCard" class="upload-card" for="pdfInput">
                 <input id="pdfInput" type="file" accept="application/pdf" />
-                <span class="upload-title">Importer un PDF</span>
-                <span class="upload-subtitle">Le fichier reste dans le navigateur et sera restauré au prochain chargement.</span>
+                <span id="pdfUploadTitle" class="upload-title">Importer un PDF</span>
+                <span id="pdfUploadSubtitle" class="upload-subtitle">Le fichier reste dans le navigateur et sera restauré au prochain chargement.</span>
               </label>
 
               <div class="stats-row">

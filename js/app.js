@@ -23,8 +23,6 @@ import {
   deleteSharedPlenary,
   forgetProject,
   getKnownProjects,
-  getSharedTokenFromUrl,
-  getSharedUrl,
   loadSharedPlenary,
   rememberProject,
   saveSharedPlenary,
@@ -35,12 +33,16 @@ let tickHandle = null;
 let currentPdfBuffer = null;
 let hasUnsavedChanges = false;
 let sideInfoIdleHandle = null;
+let savedProjectName = state.remoteToken ? state.projectName : "";
 
 const elements = {
   configView: document.querySelector("#configView"),
   presentationView: document.querySelector("#presentationView"),
   projectName: document.querySelector("#projectName"),
   pdfInput: document.querySelector("#pdfInput"),
+  pdfUploadCard: document.querySelector("#pdfUploadCard"),
+  pdfUploadTitle: document.querySelector("#pdfUploadTitle"),
+  pdfUploadSubtitle: document.querySelector("#pdfUploadSubtitle"),
   pdfName: document.querySelector("#pdfName"),
   pageCount: document.querySelector("#pageCount"),
   plenaryStart: document.querySelector("#plenaryStart"),
@@ -53,16 +55,16 @@ const elements = {
   validationList: document.querySelector("#validationList"),
   slotsList: document.querySelector("#slotsList"),
   startPresentationBtn: document.querySelector("#startPresentationBtn"),
+  startPresentationReason: document.querySelector("#startPresentationReason"),
   addSlotBtn: document.querySelector("#addSlotBtn"),
   newProjectBtn: document.querySelector("#newProjectBtn"),
   projectsBtn: document.querySelector("#projectsBtn"),
   projectsDialog: document.querySelector("#projectsDialog"),
+  projectSaveDialog: document.querySelector("#projectSaveDialog"),
   strategyDialog: document.querySelector("#strategyDialog"),
   closeProjectsBtn: document.querySelector("#closeProjectsBtn"),
   projectsList: document.querySelector("#projectsList"),
   saveBtn: document.querySelector("#saveBtn"),
-  shareBtn: document.querySelector("#shareBtn"),
-  shareLink: document.querySelector("#shareLink"),
   clearConfigBtn: document.querySelector("#clearConfigBtn"),
   storageStatus: document.querySelector("#storageStatus"),
   importProgress: document.querySelector("#importProgress"),
@@ -106,19 +108,23 @@ const elements = {
 
 function persist() {
   hasUnsavedChanges = true;
-  saveState(state);
-  if (state.remoteToken) {
-    rememberProject(state.remoteToken, state.projectName);
-    saveSharedPlenary(state.remoteToken, state)
-      .then(() => {
-        hasUnsavedChanges = false;
-        elements.storageStatus.textContent = "Configuration synchronisée";
-      })
-      .catch((error) => {
-        console.error(error);
-        elements.storageStatus.textContent = "Synchronisation Supabase indisponible";
-      });
-  }
+  elements.saveBtn.disabled = false;
+  elements.storageStatus.textContent = "Modifications non sauvegardées";
+}
+
+function updateSaveButton() {
+  elements.saveBtn.disabled = !hasUnsavedChanges;
+}
+
+function chooseRenamedProjectDestination() {
+  return new Promise((resolve) => {
+    elements.projectSaveDialog.addEventListener(
+      "close",
+      () => resolve(elements.projectSaveDialog.returnValue),
+      { once: true },
+    );
+    elements.projectSaveDialog.showModal();
+  });
 }
 
 function updateFullscreenSideInfoVisibility() {
@@ -161,7 +167,7 @@ function renderProjects() {
   if (projects.length === 0) {
     const empty = document.createElement("p");
     empty.className = "empty-state";
-    empty.textContent = "Aucun projet partagé n'a encore été ouvert sur ce navigateur.";
+    empty.textContent = "Aucun projet n'a encore été sauvegardé sur ce navigateur.";
     elements.projectsList.appendChild(empty);
     return;
   }
@@ -205,7 +211,7 @@ async function openProject(token) {
   elements.storageStatus.textContent = "Chargement du projet...";
   const remoteState = await loadSharedPlenary(token);
   if (!remoteState) {
-    throw new Error("Ce projet partagé est introuvable.");
+    throw new Error("Ce projet est introuvable.");
   }
 
   Object.assign(state, normalizeState(remoteState), { remoteToken: token });
@@ -215,8 +221,9 @@ async function openProject(token) {
   switchView(false);
   saveState(state);
   rememberProject(token, state.projectName);
+  savedProjectName = state.projectName;
   hasUnsavedChanges = false;
-  window.history.replaceState({}, "", getSharedUrl(token));
+  updateSaveButton();
   elements.projectsDialog.close();
   renderConfiguration();
   elements.storageStatus.textContent = "Projet chargé. Réimportez le PDF pour le lancer.";
@@ -230,58 +237,29 @@ async function deleteProject(token, projectName) {
   elements.storageStatus.textContent = "Suppression du projet...";
   await deleteSharedPlenary(token);
   forgetProject(token);
+  const hasRemainingProjects = getKnownProjects().length > 0;
 
   if (state.remoteToken === token) {
     Object.assign(state, resetState());
     delete state.remoteToken;
+    savedProjectName = "";
+    hasUnsavedChanges = false;
+    updateSaveButton();
     currentPdfBuffer = null;
     elements.pdfInput.value = "";
     stopTicking();
     switchView(false);
     window.history.replaceState({}, "", window.location.pathname);
     renderConfiguration();
-  } else {
+  } else if (hasRemainingProjects) {
     renderProjects();
   }
 
+  if (!hasRemainingProjects) {
+    elements.projectsDialog.close();
+  }
+
   elements.storageStatus.textContent = "Projet supprimé";
-}
-
-function renderShareLink() {
-  const isShared = Boolean(state.remoteToken);
-  elements.shareLink.hidden = !isShared;
-  elements.shareLink.value = isShared ? getSharedUrl(state.remoteToken) : "";
-  elements.shareBtn.textContent = isShared ? "Copier le lien partagé" : "Créer un lien partagé";
-}
-
-async function copyShareLink() {
-  if (!state.remoteToken) {
-    if (!state.projectName.trim()) {
-      elements.projectName.focus();
-      throw new Error("Donnez un nom au projet avant de créer son lien partagé.");
-    }
-    elements.storageStatus.textContent = "Création du lien partagé...";
-    const token = await createSharedPlenary(state);
-    state.remoteToken = token;
-    saveState(state);
-    rememberProject(token, state.projectName);
-    hasUnsavedChanges = false;
-    window.history.replaceState({}, "", getSharedUrl(token));
-    renderShareLink();
-    elements.storageStatus.textContent = "Lien partagé créé";
-    return;
-  }
-
-  const link = getSharedUrl(state.remoteToken);
-  try {
-    await navigator.clipboard.writeText(link);
-    elements.storageStatus.textContent = "Lien partagé copié";
-  } catch (error) {
-    console.warn("Copie automatique indisponible.", error);
-    elements.shareLink.focus();
-    elements.shareLink.select();
-    elements.storageStatus.textContent = "Copiez le lien affiché";
-  }
 }
 
 async function saveProject() {
@@ -293,19 +271,29 @@ async function saveProject() {
   elements.saveBtn.disabled = true;
   elements.storageStatus.textContent = "Sauvegarde du projet...";
   try {
+    if (state.remoteToken && state.projectName !== savedProjectName) {
+      const destination = await chooseRenamedProjectDestination();
+      if (destination === "cancel") {
+        elements.storageStatus.textContent = "Sauvegarde annulée";
+        return;
+      }
+      if (destination === "new") {
+        state.remoteToken = await createSharedPlenary(state);
+      }
+    }
+
     if (!state.remoteToken) {
       state.remoteToken = await createSharedPlenary(state);
-      window.history.replaceState({}, "", getSharedUrl(state.remoteToken));
-      renderShareLink();
     }
 
     await saveSharedPlenary(state.remoteToken, state);
     saveState(state);
     rememberProject(state.remoteToken, state.projectName);
+    savedProjectName = state.projectName;
     hasUnsavedChanges = false;
     elements.storageStatus.textContent = "Projet sauvegardé";
   } finally {
-    elements.saveBtn.disabled = false;
+    updateSaveButton();
   }
 }
 
@@ -316,7 +304,9 @@ function createNewProject() {
 
   Object.assign(state, resetState());
   delete state.remoteToken;
+  savedProjectName = "";
   hasUnsavedChanges = false;
+  updateSaveButton();
   currentPdfBuffer = null;
   elements.pdfInput.value = "";
   stopTicking();
@@ -325,25 +315,6 @@ function createNewProject() {
   renderConfiguration();
   elements.storageStatus.textContent = "Nouveau projet prêt à configurer";
   elements.projectName.focus();
-}
-
-async function loadSharedState() {
-  const token = getSharedTokenFromUrl();
-  if (!token) {
-    return;
-  }
-
-  elements.storageStatus.textContent = "Chargement de la plénière partagée...";
-  const remoteState = await loadSharedPlenary(token);
-  if (!remoteState) {
-    throw new Error("Cette plénière partagée est introuvable.");
-  }
-
-  Object.assign(state, normalizeState(remoteState), { remoteToken: token });
-  saveState(state);
-  rememberProject(token, state.projectName);
-  renderShareLink();
-  elements.storageStatus.textContent = "Configuration partagée synchronisée";
 }
 
 function setImportProgress(percent, label) {
@@ -436,7 +407,15 @@ function renderValidation() {
   elements.unallocatedDuration.textContent = `${
     plenarySummary.isValid ? plenarySummary.unallocatedMinutes : "--"
   } min`;
-  elements.startPresentationBtn.disabled = !summary.isValid || !plenarySummary.isValid || !currentPdfBuffer;
+  const startReason = !currentPdfBuffer
+    ? "Importez ou réimportez le PDF pour démarrer la plénière."
+    : !plenarySummary.isValid
+      ? plenarySummary.message
+      : !summary.isValid
+        ? "Corrigez les créneaux avant de démarrer la plénière."
+        : "";
+  elements.startPresentationBtn.disabled = Boolean(startReason);
+  elements.startPresentationReason.textContent = startReason;
   elements.validationList.innerHTML = "";
   elements.plenaryValidation.innerHTML = "";
 
@@ -455,12 +434,20 @@ function renderValidation() {
 
 function renderConfiguration() {
   elements.projectName.value = state.projectName;
+  elements.clearConfigBtn.disabled = !state.remoteToken;
   elements.pdfName.textContent = state.pdfName || "Aucun PDF importe";
   elements.pageCount.textContent = String(state.pageCount || 0);
   elements.plenaryStart.value = state.plenary.startTime;
   elements.plenaryDurationInput.value = state.plenary.durationMinutes;
+  const isPdfLoaded = Boolean(currentPdfBuffer);
+  elements.pdfUploadCard.classList.toggle("pdf-ready", isPdfLoaded);
+  elements.pdfUploadCard.classList.toggle("pdf-required", !isPdfLoaded);
+  elements.pdfUploadTitle.textContent = isPdfLoaded ? "PDF chargé" : "Importer un PDF";
+  elements.pdfUploadSubtitle.textContent = isPdfLoaded
+    ? "Cliquez pour remplacer le document chargé."
+    : "Le fichier reste dans le navigateur et sera restauré au prochain chargement.";
 
-  if (state.pdfName && currentPdfBuffer) {
+  if (state.pdfName && isPdfLoaded) {
     elements.pdfPreviewState.textContent = "PDF pret pour la presentation.";
   } else if (state.pdfName) {
     elements.pdfPreviewState.textContent =
@@ -471,7 +458,6 @@ function renderConfiguration() {
 
   renderSlots();
   renderValidation();
-  renderShareLink();
 }
 
 function updatePlenary(field, value) {
@@ -1152,13 +1138,6 @@ function attachEvents() {
   elements.exitPresentationBtn.addEventListener("click", leavePresentationMode);
   elements.resetBtn.addEventListener("click", resetPresentation);
   elements.clearConfigBtn.addEventListener("click", clearConfiguration);
-  elements.shareBtn.addEventListener("click", () => {
-    copyShareLink().catch((error) => {
-      console.error(error);
-      elements.storageStatus.textContent = "Impossible de créer le lien partagé";
-      window.alert(error.message || "Impossible de joindre Supabase.");
-    });
-  });
   elements.saveBtn.addEventListener("click", () => {
     saveProject().catch((error) => {
       console.error(error);
@@ -1248,17 +1227,11 @@ function attachEvents() {
 
 async function bootstrap() {
   attachEvents();
-  try {
-    await loadSharedState();
-  } catch (error) {
-    console.error(error);
-    elements.storageStatus.textContent = "Impossible de charger la plénière partagée";
-    window.alert(error.message || "Impossible de joindre Supabase.");
-  }
   renderConfiguration();
-  hasUnsavedChanges = !state.remoteToken && hasProjectContent();
+  hasUnsavedChanges = false;
+  updateSaveButton();
   if (state.remoteToken) {
-    elements.storageStatus.textContent = "Configuration partagée synchronisée";
+    elements.storageStatus.textContent = "Projet synchronisé";
   } else if (state.pdfName) {
     elements.storageStatus.textContent = "Configuration locale active";
   }

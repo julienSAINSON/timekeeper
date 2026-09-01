@@ -27,16 +27,6 @@ async function callRpc(name, body) {
   return response.status === 204 ? null : response.json();
 }
 
-export function getSharedTokenFromUrl() {
-  return new URLSearchParams(window.location.search).get("plenary");
-}
-
-export function getSharedUrl(token) {
-  const url = new URL(window.location.href);
-  url.searchParams.set("plenary", token);
-  return url.toString();
-}
-
 export async function createSharedPlenary(state) {
   return callRpc("create_shared_plenary", { p_state: sharedState(state) });
 }
