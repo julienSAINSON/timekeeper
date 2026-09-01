@@ -758,7 +758,11 @@ function getPresentationSummary() {
     elapsedMs - slotStartedElapsedMs,
     state.presentation.currentSlide,
   );
-  const totalDebtMs = state.presentation.accruedDebtMs + slotStatus.overrunMs;
+  const recordedCurrentOverrunMs = Number(
+    state.presentation.slotOverrunsMs[currentSlot?.id] || 0,
+  );
+  const totalDebtMs =
+    state.presentation.accruedDebtMs - recordedCurrentOverrunMs + slotStatus.overrunMs;
   const plannedEnd = new Date();
   const [endHours, endMinutes] = state.plenary.endTime.split(":").map(Number);
   plannedEnd.setHours(endHours, endMinutes, 0, 0);
@@ -919,8 +923,9 @@ function captureCompletedSlotDebt(previousSlide, nextSlide) {
   const elapsedMs = getElapsedMs(state.presentation);
   const slotStartedElapsedMs = Number(state.presentation.slotStartedElapsedMs[previousSlot.id] ?? 0);
   const lateMs = Math.max(0, elapsedMs - slotStartedElapsedMs - previousSlot.durationMs);
+  const previousLateMs = Number(state.presentation.slotOverrunsMs[previousSlot.id] || 0);
   state.presentation.slotOverrunsMs[previousSlot.id] = lateMs;
-  state.presentation.accruedDebtMs += lateMs;
+  state.presentation.accruedDebtMs += lateMs - previousLateMs;
   applyOverrunStrategy(state.slots.findIndex((slot) => slot.id === previousSlot.id));
 }
 

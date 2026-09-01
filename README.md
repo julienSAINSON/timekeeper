@@ -80,6 +80,12 @@ npx serve .
 
 Puis ouvrir `http://localhost:8080` ou l'URL affichée.
 
+## Tests
+
+Le projet contient un banc de tests autonome, sans dépendance npm. Ouvrez [tests/run-tests.html](tests/run-tests.html) dans un navigateur, ou servez le projet avec un serveur statique puis ouvrez `/tests/run-tests.html`.
+
+La suite couvre les calculs de plénière et de créneaux, les pauses, les états de dépassement, les réductions, ainsi que le rendu de timeline pour les démarrages tardifs et anticipés. Les scénarios E2E à exécuter avant livraison sont décrits dans [tests/README.md](tests/README.md).
+
 ## Déploiement GitHub Pages
 
 1. Pousser le contenu du dépôt sur GitHub.

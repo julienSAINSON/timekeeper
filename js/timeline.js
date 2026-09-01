@@ -73,7 +73,9 @@ export function renderTimeline(
     const overrunMs = isCurrent ? Math.max(0, slotElapsedMs - slot.durationMs) : 0;
     const progress = slot.durationMs > 0 ? slotElapsedMs / slot.durationMs : 0;
     const tone = overrunMs > 0 ? "danger" : progress >= 0.8 && isCurrent ? "warning" : "ok";
-    const slotOverrunMs = Number(slotOverrunsMs[slot.id] || 0) + (isCurrent ? currentOverrunMs : 0);
+    const slotOverrunMs = isCurrent
+      ? currentOverrunMs
+      : Number(slotOverrunsMs[slot.id] || 0);
     const actualDurationMs = slot.durationMs + slotOverrunMs;
     const width = `${(actualDurationMs / displayDurationMs) * 100}%`;
 
