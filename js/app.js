@@ -38,6 +38,7 @@ let sideInfoIdleHandle = null;
 let pdfImportRequestId = 0;
 let savedProjectName = state.remoteToken ? state.projectName : "";
 let tutorialStepIndex = 0;
+let tutorialStrategyDialogOpen = false;
 
 const tutorialSteps = [
   {
@@ -67,6 +68,12 @@ const tutorialSteps = [
     target: "#startPresentationBtn",
     title: "Lancez la plénière",
     description: "Quand la configuration est complète, démarrez la présentation et suivez le temps en direct.",
+  },
+  {
+    target: "#strategyDialog",
+    title: "Choisissez la stratégie",
+    description: "Déterminez comment absorber un dépassement: réduire les créneaux suivants, les derniers, répartir la réduction ou décaler la fin.",
+    openStrategyDialog: true,
   },
 ];
 
@@ -173,6 +180,14 @@ function clearTutorialHighlight() {
   highlightedTarget.classList.remove("tutorial-target");
 }
 
+function closeTutorialStrategyDialog() {
+  if (!tutorialStrategyDialogOpen) {
+    return;
+  }
+  elements.strategyDialog.close();
+  tutorialStrategyDialogOpen = false;
+}
+
 function positionTutorialShades(target) {
   const bounds = target.getBoundingClientRect();
   const spotlightPadding = 14;
@@ -225,6 +240,12 @@ function positionTutorialTooltip(target, placement = "auto") {
 function renderTutorialStep() {
   clearTutorialHighlight();
   const step = tutorialSteps[tutorialStepIndex];
+  if (step.openStrategyDialog && !elements.strategyDialog.open) {
+    elements.strategyDialog.show();
+    tutorialStrategyDialogOpen = true;
+  } else if (!step.openStrategyDialog) {
+    closeTutorialStrategyDialog();
+  }
   const target = document.querySelector(step.target);
   if (!target) {
     closeTutorial();
@@ -254,6 +275,7 @@ function openTutorial() {
 
 function closeTutorial() {
   clearTutorialHighlight();
+  closeTutorialStrategyDialog();
   elements.tutorialOverlay.hidden = true;
   elements.tutorialTooltip.style.removeProperty("top");
   elements.tutorialTooltip.style.removeProperty("left");

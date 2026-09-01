@@ -101,7 +101,7 @@ p {
 }
 
 .projects-dialog::backdrop {
-  background: rgba(0, 59, 92, 0.48);
+  background: rgba(0, 35, 54, 0.72);
 }
 
 .dialog-header {
@@ -153,6 +153,10 @@ p {
   pointer-events: none;
 }
 
+.projects-dialog.tutorial-target {
+  position: absolute !important;
+}
+
 .tutorial-tooltip {
   position: fixed;
   z-index: 1002;
@@ -202,6 +206,11 @@ p {
   color: var(--text);
 }
 
+.project-list-item > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
 .project-list-item span {
   color: var(--muted);
   font-size: 0.85rem;
@@ -224,6 +233,7 @@ p {
   margin: 20px 0;
   padding: 0;
   border: 0;
+  background: var(--panel-strong);
 }
 
 .strategy-option {
