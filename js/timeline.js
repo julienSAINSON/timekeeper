@@ -32,19 +32,21 @@ export function renderTimeline(
 ) {
   const totalOverrunMs = totalDebtMs;
   const overflowDurationMs = Math.max(0, totalOverrunMs - unallocatedDurationMs);
-  const displayDurationMs = totalDurationMs + initialDelayMs + initialAdvanceMs + overflowDurationMs;
+  const remainingInitialAdvanceMs = Math.max(0, initialAdvanceMs - elapsedMs);
+  const displayDurationMs =
+    totalDurationMs + initialDelayMs + remainingInitialAdvanceMs + overflowDurationMs;
   const remainingUnallocatedDurationMs = Math.max(0, unallocatedDurationMs - totalOverrunMs);
   trackElement.innerHTML = "";
 
-  if (initialAdvanceMs > 0) {
+  if (remainingInitialAdvanceMs > 0) {
     const item = document.createElement("article");
     const name = document.createElement("strong");
     const duration = document.createElement("small");
 
     item.className = "timeline-slot start-early";
-    item.style.width = `${(initialAdvanceMs / displayDurationMs) * 100}%`;
+    item.style.width = `${(remainingInitialAdvanceMs / displayDurationMs) * 100}%`;
     name.textContent = "Démarrage anticipé";
-    duration.textContent = `-${formatClock(initialAdvanceMs)}`;
+    duration.textContent = `-${formatClock(remainingInitialAdvanceMs)}`;
     item.append(name, duration);
     trackElement.appendChild(item);
   }
@@ -108,7 +110,7 @@ export function renderTimeline(
     trackElement.appendChild(item);
   }
 
-  const markerPositionMs = initialDelayMs + elapsedMs;
+  const markerPositionMs = initialDelayMs + Math.max(0, elapsedMs - initialAdvanceMs);
   const markerRatio = Math.min(markerPositionMs / displayDurationMs, 1);
   markerElement.style.left = `${markerRatio * 100}%`;
 }
