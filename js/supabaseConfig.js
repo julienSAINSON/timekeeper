@@ -1,0 +1,3 @@
+export const SUPABASE_URL = "https://nozwjovvfcosmskzneoq.supabase.co";
+export const SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5vendqb3Z2ZmNvc21za3puZW9xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNjUwOTUsImV4cCI6MjEwMzc0MTA5NX0.7DKIlTHWuIx1xwg1E47_l9IpEjn1-8ItTg9xdnMejZg";

@@ -28,7 +28,16 @@ import {
   loadSharedPlenary,
   rememberProject,
   saveSharedPlenary,
-} from "./supabase.js";
+  setAuthAccessToken,
+} from "./supabase.js?v=access-v1";
+import {
+  getCurrentUser,
+  initAuth,
+  loginWithGoogle,
+  logout,
+  onAuthStateChange,
+} from "../auth/auth.js";
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./supabaseConfig.js?v=access-v1";
 
 const state = loadState();
 let tickHandle = null;
@@ -40,6 +49,8 @@ let pdfImportRequestId = 0;
 let savedProjectName = state.remoteToken ? state.projectName : "";
 let tutorialStepIndex = 0;
 let tutorialStrategyDialogOpen = false;
+let accessMode = null;
+let currentSession = null;
 const fullscreenSlotProgressColors = {
   ok: "#007a78",
   warning: "#b76e00",
@@ -84,6 +95,14 @@ const tutorialSteps = [
 ];
 
 const elements = {
+  accessScreen: document.querySelector("#accessScreen"),
+  appShell: document.querySelector(".app-shell"),
+  googleSignInBtn: document.querySelector("#googleSignInBtn"),
+  sandboxBtn: document.querySelector("#sandboxBtn"),
+  accessError: document.querySelector("#accessError"),
+  accessStatus: document.querySelector("#accessStatus"),
+  signOutBtn: document.querySelector("#signOutBtn"),
+  homeAccessBtn: document.querySelector("#homeAccessBtn"),
   configView: document.querySelector("#configView"),
   presentationView: document.querySelector("#presentationView"),
   projectName: document.querySelector("#projectName"),
@@ -168,6 +187,68 @@ const elements = {
   plannedEndLabel: document.querySelector("#plannedEndLabel"),
   pdfPreviewState: document.querySelector("#pdfPreviewState"),
 };
+
+function showApplication(mode, user = null, accessToken = null) {
+  accessMode = mode;
+  currentSession = user;
+  setAuthAccessToken(accessToken);
+  elements.accessScreen.hidden = true;
+  elements.appShell.hidden = false;
+  elements.signOutBtn.hidden = mode !== "authenticated";
+  elements.homeAccessBtn.classList.toggle("is-sandbox-access", mode === "sandbox");
+  elements.homeAccessBtn.disabled = mode !== "sandbox";
+  elements.accessStatus.textContent = user?.email
+    ? `Connecté : ${user.email}`
+    : "Mode bac à sable";
+}
+
+function showAccessScreen() {
+  accessMode = null;
+  currentSession = null;
+  setAuthAccessToken(null);
+  elements.accessScreen.hidden = false;
+  elements.accessError.hidden = true;
+  elements.homeAccessBtn.classList.remove("is-sandbox-access");
+  elements.homeAccessBtn.disabled = true;
+}
+
+function enterSandbox() {
+  Object.assign(state, resetState());
+  savedProjectName = "";
+  hasUnsavedChanges = false;
+  currentPdfBuffer = null;
+  elements.pdfInput.value = "";
+  stopTicking();
+  switchView(false);
+  renderConfiguration();
+  updateSaveButton();
+  window.history.replaceState({}, "", window.location.pathname);
+  showApplication("sandbox");
+  elements.storageStatus.textContent = "Bac à sable prêt à configurer";
+}
+
+async function handleGoogleSignIn() {
+  elements.accessError.hidden = true;
+  elements.googleSignInBtn.disabled = true;
+  try {
+    await loginWithGoogle();
+  } catch (error) {
+    console.error(error);
+    elements.accessError.textContent = error.message || "La connexion Google est indisponible.";
+    elements.accessError.hidden = false;
+    elements.googleSignInBtn.disabled = false;
+  }
+}
+
+async function handleSignOut() {
+  try {
+    await logout();
+    showAccessScreen();
+  } catch (error) {
+    console.error(error);
+    window.alert(error.message || "La déconnexion a échoué.");
+  }
+}
 
 function persist() {
   saveState(state);
@@ -345,13 +426,16 @@ function confirmDiscardUnsavedChanges(action) {
 }
 
 function renderProjects() {
-  const projects = getKnownProjects();
+  const ownerUserId = accessMode === "authenticated" ? currentSession?.id : null;
+  const projects = getKnownProjects().filter((project) => project.ownerUserId === ownerUserId);
   elements.projectsList.innerHTML = "";
 
   if (projects.length === 0) {
     const empty = document.createElement("p");
     empty.className = "empty-state";
-    empty.textContent = "Aucun projet n'a encore été sauvegardé sur ce navigateur.";
+    empty.textContent = accessMode === "authenticated"
+      ? "Aucun projet personnel n'a encore été sauvegardé sur ce navigateur."
+      : "Aucun projet bac à sable n'a encore été sauvegardé sur ce navigateur.";
     elements.projectsList.appendChild(empty);
     return;
   }
@@ -404,7 +488,7 @@ async function openProject(token) {
   stopTicking();
   switchView(false);
   saveState(state);
-  rememberProject(token, state.projectName);
+  rememberProject(token, state.projectName, currentSession?.id);
   savedProjectName = state.projectName;
   hasUnsavedChanges = false;
   updateSaveButton();
@@ -472,7 +556,7 @@ async function saveProject() {
 
     await saveSharedPlenary(state.remoteToken, state);
     saveState(state);
-    rememberProject(state.remoteToken, state.projectName);
+    rememberProject(state.remoteToken, state.projectName, currentSession?.id);
     savedProjectName = state.projectName;
     hasUnsavedChanges = false;
     elements.storageStatus.textContent = "Projet sauvegardé";
@@ -1210,6 +1294,14 @@ async function handlePdfImport(event) {
 }
 
 function attachEvents() {
+  elements.googleSignInBtn.addEventListener("click", handleGoogleSignIn);
+  elements.sandboxBtn.addEventListener("click", enterSandbox);
+  elements.signOutBtn.addEventListener("click", handleSignOut);
+  elements.homeAccessBtn.addEventListener("click", () => {
+    if (accessMode === "sandbox") {
+      showAccessScreen();
+    }
+  });
   elements.pdfInput.addEventListener("change", (event) => {
     handlePdfImport(event).catch((error) => {
       console.error(error);
@@ -1425,6 +1517,36 @@ async function bootstrap() {
     elements.storageStatus.textContent = "Projet synchronisé";
   } else if (state.pdfName) {
     elements.storageStatus.textContent = "Configuration locale active";
+  }
+
+  initAuth({
+    supabaseUrl: SUPABASE_URL,
+    supabaseAnonKey: SUPABASE_ANON_KEY,
+    redirectTo: window.location.origin,
+  });
+
+  let user = null;
+  try {
+    user = await getCurrentUser();
+  } catch (error) {
+    console.error("Impossible de restaurer la session Supabase.", error);
+  }
+  if (user) {
+    showApplication("authenticated", user);
+  } else {
+    showAccessScreen();
+  }
+
+  try {
+    onAuthStateChange((_event, nextSession) => {
+      if (nextSession) {
+        showApplication("authenticated", nextSession.user, nextSession.access_token);
+      } else if (accessMode === "authenticated") {
+        showAccessScreen();
+      }
+    });
+  } catch (error) {
+    console.error("Impossible d'écouter la session Supabase.", error);
   }
 }
 

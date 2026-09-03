@@ -28,10 +28,13 @@ Application web front-end pour piloter le temps d'une plénière SAFe avec un PD
 │   ├── config.js
 │   ├── pdfViewer.js
 │   ├── supabase.js
+│   ├── supabaseConfig.js
 │   ├── timeline.js
 │   └── timer.js
 ├── supabase/
 │   └── schema.sql
+├── auth/
+│   └── auth.js
 └── README.md
 ```
 
@@ -46,6 +49,19 @@ La configuration et l'état de présentation peuvent être partagés au moyen d'
 Après toute mise à jour du projet, réexécutez ce script : il crée ou met à jour les fonctions Supabase, notamment la suppression de projet.
 
 Le lien contient un jeton UUID qui donne accès à la plénière. Partagez-le uniquement avec les personnes autorisées à voir ou modifier cette configuration.
+
+## Accès Google et bac à sable
+
+Au démarrage, Timekeeper propose un accès Google ou un accès sans compte au bac à sable. Les sessions Google sont persistées par Supabase : un utilisateur déjà connecté accède directement à l'application. Le bouton « Se déconnecter » ferme la session et revient à l'écran d'accès, où le bac à sable reste disponible.
+
+Pour activer Google dans Supabase :
+
+1. Ouvrez `Authentication` > `Providers` > `Google`, puis activez le fournisseur.
+2. Renseignez le Client ID et le Client Secret créés dans Google Cloud Console. Ces secrets restent exclusivement côté Supabase.
+3. Ajoutez les URL autorisées dans `Authentication` > `URL Configuration`, notamment l'URL de production de l'application et `http://localhost:8080` pour les essais locaux.
+4. Dans la Google Cloud Console, ajoutez l'URL de rappel fournie par Supabase : `https://nozwjovvfcosmskzneoq.supabase.co/auth/v1/callback`.
+
+La migration dans [supabase/schema.sql](supabase/schema.sql) ajoute la colonne nullable `user_id`. Les projets déjà présents conservent donc `user_id = null` et restent des projets publics ou bac à sable. Les nouveaux projets créés après une connexion Google reçoivent l'identifiant du compte ; les RPC de partage existantes continuent volontairement à fonctionner pour ne pas casser les liens actuels.
 
 Le bouton « Nouveau projet » remet la configuration locale à zéro sans supprimer les projets sauvegardés. Le bouton « Mes projets » liste les projets partagés ouverts sur le navigateur courant. Le bouton « Ouvrir » charge leur dernière configuration pour modification ; le PDF doit alors être réimporté avant le lancement. Le bouton « Supprimer » efface définitivement le projet de Supabase et invalide son lien partagé.
 

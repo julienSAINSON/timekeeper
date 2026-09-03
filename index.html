@@ -13,14 +13,33 @@
     <link rel="stylesheet" href="./css/style.css" />
   </head>
   <body>
+    <section id="accessScreen" class="access-screen" aria-labelledby="accessTitle">
+      <div class="access-card">
+        <p class="eyebrow">SAFe Timekeeper</p>
+        <h1 id="accessTitle">Bienvenue dans Timekeeper</h1>
+        <p class="lead">Organisez et suivez vos projets simplement.</p>
+        <div class="access-actions">
+          <button id="googleSignInBtn" class="google-button" type="button">
+            <span class="google-mark" aria-hidden="true">G</span>
+            Continuer avec Google
+          </button>
+          <p class="access-separator">ou</p>
+          <button id="sandboxBtn" class="secondary-button" type="button">Continuer vers le bac à sable</button>
+        </div>
+        <p class="access-note">Découvrez Timekeeper et explorez les projets partagés.</p>
+        <p id="accessError" class="access-error" role="alert" hidden></p>
+      </div>
+    </section>
     <div class="app-shell">
       <header class="topbar">
-        <div>
+        <button id="homeAccessBtn" class="topbar-brand" type="button" title="Retour à l'écran d'accès">
           <p class="eyebrow">Pleniere SAFe</p>
           <h1>SAFe Timekeeper</h1>
-        </div>
+        </button>
         <div class="topbar-actions">
           <span id="storageStatus" class="storage-status">Configuration locale active</span>
+          <span id="accessStatus" class="access-status"></span>
+          <button id="signOutBtn" class="ghost-button" type="button" hidden>Se déconnecter</button>
           <button id="tutorialBtn" class="ghost-button" type="button">Tutoriel</button>
           <button id="newProjectBtn" class="ghost-button" type="button">Nouveau projet</button>
           <button id="projectsBtn" class="ghost-button" type="button">Mes projets</button>
@@ -319,6 +338,6 @@
       src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.10.111/pdf.min.js"
       data-pdfjs="true"
     ></script>
-    <script type="module" src="./js/app.js"></script>
+    <script type="module" src="./js/app.js?v=access-v1"></script>
   </body>
 </html>

@@ -1,10 +1,14 @@
-create table public.shared_plenaries (
+create table if not exists public.shared_plenaries (
   id uuid primary key default gen_random_uuid(),
   share_token uuid not null unique default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete set null,
   state jsonb not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.shared_plenaries
+  add column if not exists user_id uuid references auth.users(id) on delete set null;
 
 alter table public.shared_plenaries enable row level security;
 
@@ -17,8 +21,8 @@ as $$
 declare
   new_share_token uuid;
 begin
-  insert into public.shared_plenaries (state)
-  values (p_state)
+  insert into public.shared_plenaries (state, user_id)
+  values (p_state, auth.uid())
   returning share_token into new_share_token;
 
   return new_share_token;
@@ -79,3 +83,7 @@ grant execute on function public.create_shared_plenary(jsonb) to anon;
 grant execute on function public.get_shared_plenary(uuid) to anon;
 grant execute on function public.update_shared_plenary(uuid, jsonb) to anon;
 grant execute on function public.delete_shared_plenary(uuid) to anon;
+grant execute on function public.create_shared_plenary(jsonb) to authenticated;
+grant execute on function public.get_shared_plenary(uuid) to authenticated;
+grant execute on function public.update_shared_plenary(uuid, jsonb) to authenticated;
+grant execute on function public.delete_shared_plenary(uuid) to authenticated;

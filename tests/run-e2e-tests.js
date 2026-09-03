@@ -29,6 +29,11 @@ async function loadApplication() {
   applicationFrame.src = "../index.html";
   await loaded;
   await waitFor(
+    () => applicationFrame.contentDocument?.querySelector("#accessScreen:not([hidden])"),
+    "L'écran d'accès ne s'est pas initialisé.",
+  );
+  applicationFrame.contentDocument.querySelector("#sandboxBtn").click();
+  await waitFor(
     () => applicationFrame.contentDocument?.querySelector("#configView.active"),
     "L'application ne s'est pas initialisée.",
   );

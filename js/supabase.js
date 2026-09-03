@@ -1,7 +1,11 @@
-const SUPABASE_URL = "https://nozwjovvfcosmskzneoq.supabase.co";
-const SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5vendqb3Z2ZmNvc21za3puZW9xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNjUwOTUsImV4cCI6MjEwMzc0MTA5NX0.7DKIlTHWuIx1xwg1E47_l9IpEjn1-8ItTg9xdnMejZg";
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./supabaseConfig.js?v=access-v1";
+
 const PROJECT_INDEX_KEY = "safe-timekeeper-project-index-v1";
+let authAccessToken = null;
+
+export function setAuthAccessToken(accessToken) {
+  authAccessToken = accessToken || null;
+}
 
 function sharedState(state) {
   const { remoteToken, ...stateToShare } = state;
@@ -13,7 +17,7 @@ async function callRpc(name, body) {
     method: "POST",
     headers: {
       apikey: SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      Authorization: `Bearer ${authAccessToken || SUPABASE_ANON_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
@@ -52,12 +56,13 @@ export function getKnownProjects() {
   }
 }
 
-export function rememberProject(token, projectName) {
+export function rememberProject(token, projectName, ownerUserId = null) {
   const projects = getKnownProjects().filter((project) => project.token !== token);
   projects.unshift({
     token,
     name: projectName || "Plénière sans nom",
     lastOpenedAt: new Date().toISOString(),
+    ownerUserId: ownerUserId || null,
   });
   localStorage.setItem(PROJECT_INDEX_KEY, JSON.stringify(projects.slice(0, 30)));
 }
