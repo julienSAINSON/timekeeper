@@ -83,6 +83,19 @@ test("Importe la fixture PDF et exécute le parcours de présentation", async ()
       "Le PDF n'a pas été rendu dans le canvas.",
     );
 
+    documentToTest.querySelector("#togglePresentationDetails").click();
+    await waitFor(
+      () => documentToTest.querySelector("#presentationView").classList.contains("presentation-details-open"),
+      "Les détails de la timeline ne se sont pas ouverts.",
+    );
+    const slideCounter = documentToTest.querySelector("#slideCounter");
+    const counterBounds = slideCounter.getBoundingClientRect();
+    const timelineBounds = documentToTest.querySelector(".timeline-panel").getBoundingClientRect();
+    assert(
+      counterBounds.bottom <= timelineBounds.top,
+      "Le numéro de slide doit rester visible au-dessus de la timeline agrandie.",
+    );
+
     documentToTest.querySelector("#nextSlideBtn").click();
     await waitFor(
       () => documentToTest.querySelector("#slideCounter").textContent === "Slide 2 / 6",

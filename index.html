@@ -218,6 +218,12 @@
         </section>
 
         <section id="presentationView" class="view presentation-view">
+          <div id="fullscreenSlotProgress" class="fullscreen-slot-progress" aria-hidden="true">
+            <span class="fullscreen-slot-progress-left"></span>
+            <span class="fullscreen-slot-progress-top"></span>
+            <span class="fullscreen-slot-progress-right"></span>
+            <span class="fullscreen-slot-progress-bottom"></span>
+          </div>
           <div class="presentation-stage">
             <div id="pdfStage" class="pdf-stage">
               <aside class="slide-side-info slide-side-info-current" aria-label="Créneau en cours">
@@ -234,6 +240,7 @@
               </aside>
               <div id="pdfLoading" class="pdf-overlay">Chargement du PDF…</div>
               <div id="slideCounter" class="slide-counter">Slide 0 / 0</div>
+              <div id="fullscreenOverrun" class="fullscreen-overrun" hidden></div>
             </div>
           </div>
 
@@ -279,7 +286,7 @@
                 </div>
               </div>
               <div class="presentation-help">
-                Raccourcis: ← → Espace pour naviguer, <kbd>P</kbd> pause/reprise, <kbd>F</kbd> plein écran.
+                Raccourcis: ← → Espace pour naviguer, <kbd>P</kbd> pause/reprise, <kbd>F</kbd> ou <kbd>F11</kbd> plein écran.
               </div>
             </div>
 

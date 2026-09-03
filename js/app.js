@@ -32,6 +32,7 @@ import {
 
 const state = loadState();
 let tickHandle = null;
+let fullscreenProgressAnimationHandle = null;
 let currentPdfBuffer = null;
 let hasUnsavedChanges = false;
 let sideInfoIdleHandle = null;
@@ -39,6 +40,11 @@ let pdfImportRequestId = 0;
 let savedProjectName = state.remoteToken ? state.projectName : "";
 let tutorialStepIndex = 0;
 let tutorialStrategyDialogOpen = false;
+const fullscreenSlotProgressColors = {
+  ok: "#007a78",
+  warning: "#b76e00",
+  danger: "#b42318",
+};
 
 const tutorialSteps = [
   {
@@ -126,6 +132,7 @@ const elements = {
   progressLabel: document.querySelector("#progressLabel"),
   progressValue: document.querySelector("#progressValue"),
   progressFill: document.querySelector("#progressFill"),
+  fullscreenSlotProgress: document.querySelector("#fullscreenSlotProgress"),
   pdfCanvas: document.querySelector("#pdfCanvas"),
   pdfStage: document.querySelector("#pdfStage"),
   sideCurrentSlotPanel: document.querySelector(".slide-side-info-current"),
@@ -137,6 +144,7 @@ const elements = {
   sideNextSlotTime: document.querySelector("#sideNextSlotTime"),
   pdfLoading: document.querySelector("#pdfLoading"),
   slideCounter: document.querySelector("#slideCounter"),
+  fullscreenOverrun: document.querySelector("#fullscreenOverrun"),
   presentationDetails: document.querySelector("#presentationDetails"),
   togglePresentationDetails: document.querySelector("#togglePresentationDetails"),
   prevSlideBtn: document.querySelector("#prevSlideBtn"),
@@ -814,6 +822,33 @@ function getPresentationSummary() {
   };
 }
 
+function renderFullscreenSlotProgress(currentSlot, slotStatus) {
+  const slotProgress = currentSlot?.durationMs
+    ? Math.min(100, (slotStatus.slotElapsedMs / currentSlot.durationMs) * 100)
+    : 0;
+  const perimeterProgress = slotProgress * 4;
+  elements.fullscreenSlotProgress.style.setProperty(
+    "--fullscreen-slot-progress-left",
+    `${Math.min(100, perimeterProgress)}%`,
+  );
+  elements.fullscreenSlotProgress.style.setProperty(
+    "--fullscreen-slot-progress-top",
+    `${Math.min(100, Math.max(0, perimeterProgress - 100))}%`,
+  );
+  elements.fullscreenSlotProgress.style.setProperty(
+    "--fullscreen-slot-progress-right",
+    `${Math.min(100, Math.max(0, perimeterProgress - 200))}%`,
+  );
+  elements.fullscreenSlotProgress.style.setProperty(
+    "--fullscreen-slot-progress-bottom",
+    `${Math.min(100, Math.max(0, perimeterProgress - 300))}%`,
+  );
+  elements.fullscreenSlotProgress.style.setProperty(
+    "--fullscreen-slot-progress-color",
+    fullscreenSlotProgressColors[slotStatus.tone],
+  );
+}
+
 function renderPresentationMetrics() {
   let presentationSummary = getPresentationSummary();
   if (presentationSummary.currentSlot && presentationSummary.slotStatus.overrunMs > 0) {
@@ -855,6 +890,9 @@ function renderPresentationMetrics() {
   elements.sideCurrentSlotStatus.textContent = slotStatus.label;
   elements.sideCurrentSlotPanel.classList.remove("status-ok", "status-warning", "status-danger");
   elements.sideCurrentSlotPanel.classList.add(`status-${slotStatus.tone}`);
+  renderFullscreenSlotProgress(currentSlot, slotStatus);
+  elements.fullscreenOverrun.hidden = slotStatus.overrunMs <= 0;
+  elements.fullscreenOverrun.textContent = slotStatus.overrunMs > 0 ? slotStatus.label : "";
   elements.sideNextSlotName.textContent = nextSlot?.name ?? "Fin de la plénière";
   elements.sideNextSlotTime.textContent = nextSlot ? formatClock(nextSlot.durationMs) : "--:--";
   elements.timeDebt.textContent = `+${formatClock(totalDebtMs)}`;
@@ -898,6 +936,12 @@ function startTicking() {
   tickHandle = window.setInterval(() => {
     renderPresentationMetrics();
   }, 250);
+  const animateFullscreenProgress = () => {
+    const { currentSlot, slotStatus } = getPresentationSummary();
+    renderFullscreenSlotProgress(currentSlot, slotStatus);
+    fullscreenProgressAnimationHandle = window.requestAnimationFrame(animateFullscreenProgress);
+  };
+  fullscreenProgressAnimationHandle = window.requestAnimationFrame(animateFullscreenProgress);
 }
 
 function escapeCsvValue(value) {
@@ -934,6 +978,10 @@ function stopTicking() {
   if (tickHandle) {
     window.clearInterval(tickHandle);
     tickHandle = null;
+  }
+  if (fullscreenProgressAnimationHandle) {
+    window.cancelAnimationFrame(fullscreenProgressAnimationHandle);
+    fullscreenProgressAnimationHandle = null;
   }
 }
 
@@ -1032,7 +1080,6 @@ function nextSlide() {
   if (nextSlot && state.presentation.slotStartedElapsedMs[nextSlot.id] === undefined) {
     state.presentation.slotStartedElapsedMs[nextSlot.id] = getElapsedMs(state.presentation);
   }
-  updateFullscreenSideInfoVisibility();
   persist();
   renderCurrentSlide();
   renderPresentationMetrics();
@@ -1044,7 +1091,6 @@ function previousSlide() {
   }
 
   state.presentation.currentSlide -= 1;
-  updateFullscreenSideInfoVisibility();
   persist();
   renderCurrentSlide();
   renderPresentationMetrics();
@@ -1363,7 +1409,7 @@ function attachEvents() {
       } else {
         pausePresentation();
       }
-    } else if (event.key.toLowerCase() === "f") {
+    } else if (event.key.toLowerCase() === "f" || event.key === "F11") {
       event.preventDefault();
       elements.fullscreenBtn.click();
     }
