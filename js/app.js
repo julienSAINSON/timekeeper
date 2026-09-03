@@ -1522,7 +1522,7 @@ async function bootstrap() {
   initAuth({
     supabaseUrl: SUPABASE_URL,
     supabaseAnonKey: SUPABASE_ANON_KEY,
-    redirectTo: window.location.origin,
+    redirectTo: new URL("./", window.location.href).href,
   });
 
   let user = null;
