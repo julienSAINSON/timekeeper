@@ -41,11 +41,15 @@ function normalizeSlots(rawSlots) {
   return rawSlots.map((rawSlot, index) => ({
     id: typeof rawSlot?.id === "string" ? rawSlot.id : `slot-${index + 1}`,
     name: typeof rawSlot?.name === "string" ? rawSlot.name : "",
+    type: ["presentation", "question", "quiz"].includes(rawSlot?.type)
+      ? rawSlot.type
+      : "presentation",
     startSlide: Number.isFinite(Number(rawSlot?.startSlide)) ? Number(rawSlot.startSlide) : 0,
     endSlide: Number.isFinite(Number(rawSlot?.endSlide)) ? Number(rawSlot.endSlide) : 0,
     durationMinutes: Number.isFinite(Number(rawSlot?.durationMinutes))
       ? Number(rawSlot.durationMinutes)
       : 0,
+    optional: typeof rawSlot?.optional === "boolean" ? rawSlot.optional : false,
   }));
 }
 
@@ -190,9 +194,11 @@ export function createSlot(pageCount = 0) {
   return {
     id: crypto.randomUUID(),
     name: "Créneau 1",
+    type: "presentation",
     startSlide: 1,
     endSlide: lastSlide,
     durationMinutes: 5,
+    optional: false,
   };
 }
 

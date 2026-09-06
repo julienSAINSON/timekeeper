@@ -1,7 +1,10 @@
 import {
+  createSlot,
   createDefaultPresentationState,
   getPlenaryEndTime,
+  loadState,
   normalizeState,
+  saveState,
   validatePlenary,
   validateSlots,
 } from "../js/config.js";
@@ -90,6 +93,55 @@ test("Normalise les créneaux restaurés malformés", () => {
   equal(state.slots[0].startSlide, 2);
   equal(state.slots[0].endSlide, 0);
   equal(state.slots[0].durationMinutes, 5);
+});
+
+test("Normalise les anciens créneaux comme des présentations obligatoires", () => {
+  const state = normalizeState({
+    slots: [{ id: "legacy", name: "Introduction", startSlide: 1, endSlide: 5, durationMinutes: 10 }],
+  });
+  equal(state.slots[0].type, "presentation");
+  equal(state.slots[0].optional, false);
+});
+
+test("Crée un créneau de présentation obligatoire par défaut", () => {
+  const createdSlot = createSlot(4);
+  equal(createdSlot.type, "presentation");
+  equal(createdSlot.optional, false);
+});
+
+test("Conserve les types de créneau et l'optionnel dans la validation existante", () => {
+  const slots = [
+    { ...slot("presentation", 1, 1, 5), type: "presentation", optional: false },
+    { ...slot("question", 2, 2, 5), type: "question", optional: true },
+    { ...slot("quiz", 3, 3, 5), type: "quiz", optional: false },
+  ];
+  const normalizedSlots = normalizeState({ slots }).slots;
+
+  equal(normalizedSlots[0].type, "presentation");
+  equal(normalizedSlots[1].type, "question");
+  equal(normalizedSlots[1].optional, true);
+  equal(normalizedSlots[2].type, "quiz");
+  equal(normalizedSlots[2].optional, false);
+  assert(validateSlots(normalizedSlots, 3).isValid);
+});
+
+test("Préserve les nouveaux attributs après sauvegarde et rechargement local", () => {
+  const storageKey = "safe-timekeeper-config-v1";
+  const previousState = localStorage.getItem(storageKey);
+  try {
+    saveState({
+      slots: [{ ...slot("question", 1, 1, 5), type: "question", optional: true }],
+    });
+    const loadedState = loadState();
+    equal(loadedState.slots[0].type, "question");
+    equal(loadedState.slots[0].optional, true);
+  } finally {
+    if (previousState === null) {
+      localStorage.removeItem(storageKey);
+    } else {
+      localStorage.setItem(storageKey, previousState);
+    }
+  }
 });
 
 test("Valide une plénière avec du temps non dédié", () => {
