@@ -14,6 +14,10 @@ function assert(condition, message = "Assertion non satisfaite.") {
   }
 }
 
+function equal(actual, expected, message) {
+  assert(Object.is(actual, expected), message || `Attendu ${expected}, obtenu ${actual}.`);
+}
+
 async function waitFor(check, message, timeoutMs = 15000) {
   const startedAt = performance.now();
   while (!check()) {
@@ -26,7 +30,7 @@ async function waitFor(check, message, timeoutMs = 15000) {
 
 async function loadApplication() {
   const loaded = new Promise((resolve) => applicationFrame.addEventListener("load", resolve, { once: true }));
-  applicationFrame.src = "../index.html";
+  applicationFrame.src = `../index.html?e2e=${Date.now()}`;
   await loaded;
   await waitFor(
     () => applicationFrame.contentDocument?.querySelector("#accessScreen:not([hidden])"),
@@ -60,6 +64,22 @@ async function importFixture(documentToTest) {
     () => documentToTest.querySelector("#pdfUploadCard").classList.contains("pdf-ready"),
     "L'import du PDF n'est pas terminé.",
   );
+}
+
+function changeInput(documentToTest, selector, value) {
+  updateInput(documentToTest, selector, value);
+  documentToTest.querySelector(selector).dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function storedSlots(documentToTest) {
+  return JSON.parse(documentToTest.defaultView.localStorage.getItem(STORAGE_KEY)).slots;
+}
+
+function chooseWizardType(documentToTest, type) {
+  const option = documentToTest.querySelector(`input[name="slotWizardType"][value="${type}"]`);
+  option.checked = true;
+  option.dispatchEvent(new Event("change", { bubbles: true }));
+  documentToTest.querySelector("#slotWizardTypeNextBtn").click();
 }
 
 test("Importe la fixture PDF et exécute le parcours de présentation", async () => {
@@ -115,6 +135,96 @@ test("Importe la fixture PDF et exécute le parcours de présentation", async ()
       () => documentToTest.querySelector("#configView").classList.contains("active"),
       "Le retour à la configuration a échoué.",
     );
+  } finally {
+    if (previousState === null) {
+      localStorage.removeItem(STORAGE_KEY);
+    } else {
+      localStorage.setItem(STORAGE_KEY, previousState);
+    }
+    await loadApplication();
+  }
+});
+
+test("Crée les types de créneaux et une séquence interactive avec le wizard", async () => {
+  const previousState = localStorage.getItem(STORAGE_KEY);
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    let documentToTest = await loadApplication();
+    await importFixture(documentToTest);
+    documentToTest.querySelector("#addSlotBtn").click();
+    chooseWizardType(documentToTest, "question");
+    assert(documentToTest.querySelector("#slotWizardCreateBtn").disabled, "La création doit être bloquée sans slide libre.");
+    assert(documentToTest.querySelector("#slotWizardDetailsError").textContent.includes("slides libres"), "Le manque de slides doit être expliqué.");
+    documentToTest.querySelector("#closeSlotWizardBtn").click();
+    changeInput(documentToTest, '[data-field="endSlide"]', "1");
+    const initialSlot = storedSlots(documentToTest)[0];
+
+    documentToTest.querySelector("#addSlotBtn").click();
+    assert(documentToTest.querySelector("#slotWizardDialog").open, "Le wizard devrait s'ouvrir.");
+    chooseWizardType(documentToTest, "question");
+    assert(documentToTest.querySelector("#slotWizardEndSlide").value === "2", "La question doit commencer à la slide suivante.");
+    assert(documentToTest.querySelector("#slotWizardDuration").value === "1", "La durée par défaut doit être une minute.");
+    documentToTest.querySelector("#slotWizardCreateBtn").click();
+    let slots = storedSlots(documentToTest);
+    equal(slots.length, 2);
+    equal(slots[1].type, "question");
+    equal(slots[1].optional, false);
+    equal(slots[1].startSlide, 2);
+    equal(slots[1].endSlide, 2);
+    equal(slots[1].durationMinutes, 1);
+
+    documentToTest.querySelector("#addSlotBtn").click();
+    chooseWizardType(documentToTest, "quiz");
+    documentToTest.querySelector("#slotWizardCreateBtn").click();
+    slots = storedSlots(documentToTest);
+    equal(slots[2].type, "quiz");
+    equal(slots[2].optional, false);
+    equal(slots[2].startSlide, 3);
+    equal(slots[2].endSlide, 3);
+    equal(slots[2].durationMinutes, 1);
+
+    documentToTest.querySelector("#addSlotBtn").click();
+    chooseWizardType(documentToTest, "presentation");
+    documentToTest.querySelector("#slotWizardStructureNextBtn").click();
+    documentToTest.querySelector("#slotWizardCreateBtn").click();
+    slots = storedSlots(documentToTest);
+    equal(slots[3].type, "presentation");
+    equal(slots[3].optional, false);
+
+    localStorage.removeItem(STORAGE_KEY);
+    documentToTest = await loadApplication();
+    await importFixture(documentToTest);
+    changeInput(documentToTest, '[data-field="endSlide"]', "1");
+    const interactiveInitialSlot = storedSlots(documentToTest)[0];
+    documentToTest.querySelector("#addSlotBtn").click();
+    chooseWizardType(documentToTest, "presentation");
+    const interactive = documentToTest.querySelector('input[name="slotWizardStructure"][value="interactive"]');
+    interactive.checked = true;
+    interactive.dispatchEvent(new Event("change", { bubbles: true }));
+    documentToTest.querySelector("#slotWizardStructureNextBtn").click();
+    updateInput(documentToTest, "#slotWizardEndSlide", "3");
+    updateInput(documentToTest, "#slotWizardDuration", "2");
+    const preview = documentToTest.querySelector("#slotWizardPreview").textContent;
+    assert(preview.includes("4 → 4") && preview.includes("5 → 5"), "La prévisualisation doit suivre le dernier slide saisi.");
+    assert(preview.includes("Total : 4 min"), "La prévisualisation doit recalculer la durée totale.");
+    documentToTest.querySelector("#slotWizardCreateBtn").click();
+    slots = storedSlots(documentToTest);
+    equal(slots.length, 4);
+    equal(slots[0].id, interactiveInitialSlot.id);
+    equal(slots[0].endSlide, 1);
+    equal(slots[1].type, "presentation");
+    equal(slots[1].startSlide, 2);
+    equal(slots[1].endSlide, 3);
+    equal(slots[1].durationMinutes, 2);
+    equal(slots[2].type, "question");
+    equal(slots[2].startSlide, 4);
+    equal(slots[2].endSlide, 4);
+    equal(slots[2].durationMinutes, 1);
+    equal(slots[3].type, "quiz");
+    equal(slots[3].startSlide, 5);
+    equal(slots[3].endSlide, 5);
+    equal(slots[3].durationMinutes, 1);
+    assert(documentToTest.querySelector("#validationList").textContent.includes("Slides non couvertes: 6"), "La validation de couverture existante doit rester active.");
   } finally {
     if (previousState === null) {
       localStorage.removeItem(STORAGE_KEY);

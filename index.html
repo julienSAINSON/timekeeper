@@ -99,6 +99,42 @@
         </form>
       </dialog>
 
+      <dialog id="slotWizardDialog" class="projects-dialog slot-wizard-dialog">
+        <div class="dialog-header">
+          <h2>Ajouter un créneau</h2>
+          <button id="closeSlotWizardBtn" class="dialog-close-button" type="button" aria-label="Fermer l'ajout de créneau" title="Fermer">&times;</button>
+        </div>
+        <section id="slotWizardTypeStep">
+          <p class="lead">Quel type de créneau veux-tu créer ?</p>
+          <fieldset class="slot-wizard-options">
+            <label class="slot-wizard-option"><input type="radio" name="slotWizardType" value="presentation" /><span><strong>Présentation</strong><small>Présenter un contenu</small></span></label>
+            <label class="slot-wizard-option"><input type="radio" name="slotWizardType" value="question" /><span><strong>Question</strong><small>Échanger avec l'audience</small></span></label>
+            <label class="slot-wizard-option"><input type="radio" name="slotWizardType" value="quiz" /><span><strong>Quiz</strong><small>Vérifier la compréhension</small></span></label>
+          </fieldset>
+          <p id="slotWizardTypeError" class="slot-wizard-error" role="alert" hidden></p>
+          <div class="dialog-actions"><button id="slotWizardTypeNextBtn" class="primary-button" type="button" disabled>Suivant</button></div>
+        </section>
+        <section id="slotWizardStructureStep" hidden>
+          <p class="lead">Comment veux-tu structurer cette présentation ?</p>
+          <fieldset class="slot-wizard-options">
+            <label class="slot-wizard-option"><input type="radio" name="slotWizardStructure" value="single" checked /><span><strong>Présentation seule</strong><small>Un créneau de présentation classique.</small></span></label>
+            <label class="slot-wizard-option"><input type="radio" name="slotWizardStructure" value="interactive" /><span><strong>Présentation interactive</strong><small>Présentation + Questions + Quiz pour faire participer l'audience.</small></span></label>
+          </fieldset>
+          <div class="dialog-actions slot-wizard-actions"><button id="slotWizardStructureBackBtn" class="ghost-button" type="button">Précédent</button><button id="slotWizardStructureNextBtn" class="primary-button" type="button">Suivant</button></div>
+        </section>
+        <section id="slotWizardDetailsStep" hidden>
+          <p id="slotWizardDetailsLead" class="lead"></p>
+          <div class="slot-wizard-fields">
+            <div class="field"><label for="slotWizardName">Nom</label><input id="slotWizardName" type="text" maxlength="100" /></div>
+            <div class="field"><label id="slotWizardSlideLabel" for="slotWizardEndSlide">Dernière slide</label><input id="slotWizardEndSlide" type="number" min="1" step="1" required /></div>
+            <div class="field"><label for="slotWizardDuration">Durée (min)</label><input id="slotWizardDuration" type="number" min="1" step="1" value="1" required /></div>
+          </div>
+          <p id="slotWizardDetailsError" class="slot-wizard-error" role="alert" hidden></p>
+          <div id="slotWizardPreview" class="slot-wizard-preview" hidden></div>
+          <div class="dialog-actions slot-wizard-actions"><button id="slotWizardDetailsBackBtn" class="ghost-button" type="button">Précédent</button><button id="slotWizardCreateBtn" class="primary-button" type="button">Ajouter</button></div>
+        </section>
+      </dialog>
+
       <div id="tutorialOverlay" class="tutorial-overlay" hidden aria-live="polite">
         <div id="tutorialShadeTop" class="tutorial-shade"></div>
         <div id="tutorialShadeRight" class="tutorial-shade"></div>
@@ -338,6 +374,6 @@
       src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.10.111/pdf.min.js"
       data-pdfjs="true"
     ></script>
-    <script type="module" src="./js/app.js?v=access-v1"></script>
+    <script type="module" src="./js/app.js?v=slot-wizard-v1"></script>
   </body>
 </html>

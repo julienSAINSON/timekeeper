@@ -51,6 +51,7 @@ let tutorialStepIndex = 0;
 let tutorialStrategyDialogOpen = false;
 let accessMode = null;
 let currentSession = null;
+let slotWizard = null;
 const fullscreenSlotProgressColors = {
   ok: "#007a78",
   warning: "#b76e00",
@@ -142,6 +143,24 @@ const elements = {
   projectsDialog: document.querySelector("#projectsDialog"),
   projectSaveDialog: document.querySelector("#projectSaveDialog"),
   strategyDialog: document.querySelector("#strategyDialog"),
+  slotWizardDialog: document.querySelector("#slotWizardDialog"),
+  closeSlotWizardBtn: document.querySelector("#closeSlotWizardBtn"),
+  slotWizardTypeStep: document.querySelector("#slotWizardTypeStep"),
+  slotWizardStructureStep: document.querySelector("#slotWizardStructureStep"),
+  slotWizardDetailsStep: document.querySelector("#slotWizardDetailsStep"),
+  slotWizardTypeNextBtn: document.querySelector("#slotWizardTypeNextBtn"),
+  slotWizardStructureBackBtn: document.querySelector("#slotWizardStructureBackBtn"),
+  slotWizardStructureNextBtn: document.querySelector("#slotWizardStructureNextBtn"),
+  slotWizardDetailsBackBtn: document.querySelector("#slotWizardDetailsBackBtn"),
+  slotWizardCreateBtn: document.querySelector("#slotWizardCreateBtn"),
+  slotWizardName: document.querySelector("#slotWizardName"),
+  slotWizardEndSlide: document.querySelector("#slotWizardEndSlide"),
+  slotWizardDuration: document.querySelector("#slotWizardDuration"),
+  slotWizardSlideLabel: document.querySelector("#slotWizardSlideLabel"),
+  slotWizardDetailsLead: document.querySelector("#slotWizardDetailsLead"),
+  slotWizardTypeError: document.querySelector("#slotWizardTypeError"),
+  slotWizardDetailsError: document.querySelector("#slotWizardDetailsError"),
+  slotWizardPreview: document.querySelector("#slotWizardPreview"),
   closeProjectsBtn: document.querySelector("#closeProjectsBtn"),
   projectsList: document.querySelector("#projectsList"),
   saveBtn: document.querySelector("#saveBtn"),
@@ -776,6 +795,144 @@ function createSequentialSlot() {
   return slot;
 }
 
+function getNextSlotStartSlide() {
+  const previousSlot = state.slots.at(-1);
+  return previousSlot ? Number(previousSlot.endSlide || 0) + 1 : 1;
+}
+
+function getSlotWizardCapacity() {
+  const maxSlide = Math.max(state.pageCount, 1);
+  const startSlide = getNextSlotStartSlide();
+  return {
+    startSlide,
+    maxSlide,
+    availableSlides: Math.max(0, maxSlide - startSlide + 1),
+  };
+}
+
+function setSlotWizardError(element, message = "") {
+  element.textContent = message;
+  element.hidden = !message;
+}
+
+function closeSlotWizard() {
+  elements.slotWizardDialog.close();
+  slotWizard = null;
+}
+
+function renderSlotWizardDetails() {
+  const { startSlide, maxSlide, availableSlides } = getSlotWizardCapacity();
+  const isInteractive = slotWizard.structure === "interactive";
+  const isPresentation = slotWizard.type === "presentation";
+  const requiredSlides = isInteractive ? 3 : 1;
+  const hasCapacity = availableSlides >= requiredSlides;
+  const endSlideMaximum = isInteractive ? maxSlide - 2 : maxSlide;
+  const defaultEndSlide = isInteractive ? endSlideMaximum : startSlide;
+
+  elements.slotWizardDetailsLead.textContent = isPresentation
+    ? `La présentation commencera à la slide ${startSlide}.`
+    : `Le créneau utilisera la slide ${startSlide}.`;
+  elements.slotWizardSlideLabel.textContent = isPresentation ? "Dernière slide" : "Slide";
+  elements.slotWizardEndSlide.min = String(startSlide);
+  elements.slotWizardEndSlide.max = String(endSlideMaximum);
+  elements.slotWizardEndSlide.readOnly = !isPresentation;
+  elements.slotWizardEndSlide.value = String(defaultEndSlide);
+  elements.slotWizardDuration.value = "1";
+  elements.slotWizardName.value = isPresentation
+    ? `Créneau ${state.slots.length + 1}`
+    : `${slotWizard.type === "question" ? "Question" : "Quiz"} ${state.slots.length + 1}`;
+  elements.slotWizardPreview.hidden = !isInteractive;
+  setSlotWizardError(
+    elements.slotWizardDetailsError,
+    hasCapacity ? "" : `Cette position ne laisse pas assez de slides libres pour créer ${isInteractive ? "une présentation interactive" : "ce créneau"}.`,
+  );
+  elements.slotWizardCreateBtn.disabled = !hasCapacity;
+  renderSlotWizardPreview();
+}
+
+function renderSlotWizardPreview() {
+  if (!slotWizard || slotWizard.structure !== "interactive") {
+    return;
+  }
+
+  const { startSlide } = getSlotWizardCapacity();
+  const endSlide = Number(elements.slotWizardEndSlide.value);
+  const durationMinutes = Number(elements.slotWizardDuration.value);
+  const isValid = Number.isFinite(endSlide) && endSlide >= startSlide && Number.isFinite(durationMinutes) && durationMinutes > 0;
+  if (!isValid) {
+    elements.slotWizardPreview.innerHTML = "";
+    return;
+  }
+
+  const rows = [
+    ["Présentation", startSlide, endSlide, durationMinutes],
+    ["Question", endSlide + 1, endSlide + 1, 1],
+    ["Quiz", endSlide + 2, endSlide + 2, 1],
+  ];
+  elements.slotWizardPreview.innerHTML = `
+    <h3>Votre séquence</h3>
+    ${rows.map(([name, start, end, duration]) => `<div class="slot-wizard-preview-row"><strong>${name}</strong><span>${start} → ${end}</span><span>${duration} min</span></div>`).join("")}
+    <p class="slot-wizard-preview-total"><strong>Total : ${durationMinutes + 2} min</strong></p>
+  `;
+}
+
+function openSlotWizard() {
+  slotWizard = { type: null, structure: "single" };
+  document.querySelectorAll('input[name="slotWizardType"]').forEach((input) => {
+    input.checked = false;
+  });
+  document.querySelector('input[name="slotWizardStructure"][value="single"]').checked = true;
+  elements.slotWizardTypeStep.hidden = false;
+  elements.slotWizardStructureStep.hidden = true;
+  elements.slotWizardDetailsStep.hidden = true;
+  elements.slotWizardTypeNextBtn.disabled = true;
+  setSlotWizardError(elements.slotWizardTypeError);
+  setSlotWizardError(elements.slotWizardDetailsError);
+  elements.slotWizardDialog.showModal();
+}
+
+function showSlotWizardDetails() {
+  elements.slotWizardTypeStep.hidden = true;
+  elements.slotWizardStructureStep.hidden = true;
+  elements.slotWizardDetailsStep.hidden = false;
+  renderSlotWizardDetails();
+}
+
+function createSlotsFromWizard() {
+  const { startSlide, maxSlide } = getSlotWizardCapacity();
+  const endSlide = Number(elements.slotWizardEndSlide.value);
+  const durationMinutes = Number(elements.slotWizardDuration.value);
+  const requiredSlides = slotWizard.structure === "interactive" ? 3 : 1;
+  const hasValidRange = Number.isInteger(endSlide) && endSlide >= startSlide && endSlide <= maxSlide - requiredSlides + 1;
+  if (!hasValidRange || !Number.isFinite(durationMinutes) || durationMinutes <= 0) {
+    setSlotWizardError(elements.slotWizardDetailsError, "Renseignez une plage de slides et une durée valides.");
+    return;
+  }
+
+  const name = elements.slotWizardName.value.trim() || `Créneau ${state.slots.length + 1}`;
+  const slotEndSlide = slotWizard.type === "presentation" ? endSlide : startSlide;
+  const slotsToAdd = [{
+    id: crypto.randomUUID(),
+    name,
+    type: slotWizard.type,
+    startSlide,
+    endSlide: slotEndSlide,
+    durationMinutes,
+    optional: false,
+  }];
+  if (slotWizard.structure === "interactive") {
+    slotsToAdd.push(
+      { id: crypto.randomUUID(), name: "Question", type: "question", startSlide: endSlide + 1, endSlide: endSlide + 1, durationMinutes: 1, optional: false },
+      { id: crypto.randomUUID(), name: "Quiz", type: "quiz", startSlide: endSlide + 2, endSlide: endSlide + 2, durationMinutes: 1, optional: false },
+    );
+  }
+
+  state.slots.push(...slotsToAdd);
+  persist();
+  renderConfiguration();
+  closeSlotWizard();
+}
+
 function moveSlot(slotId, direction) {
   const index = state.slots.findIndex((slot) => slot.id === slotId);
   if (index < 0) {
@@ -1320,15 +1477,43 @@ function attachEvents() {
     updateProjectName(event.target.value);
   });
 
-  elements.addSlotBtn.addEventListener("click", () => {
-    state.slots.push(createSequentialSlot());
-    persist();
-    renderConfiguration();
-    const newSlot = state.slots.at(-1);
-    const nameInput = document.querySelector(`#slot-name-${newSlot.id}`);
-    nameInput?.focus();
-    nameInput?.select();
+  elements.addSlotBtn.addEventListener("click", openSlotWizard);
+  elements.closeSlotWizardBtn.addEventListener("click", closeSlotWizard);
+  document.querySelectorAll('input[name="slotWizardType"]').forEach((input) => {
+    input.addEventListener("change", () => {
+      slotWizard.type = input.value;
+      elements.slotWizardTypeNextBtn.disabled = false;
+    });
   });
+  elements.slotWizardTypeNextBtn.addEventListener("click", () => {
+    if (!slotWizard.type) {
+      setSlotWizardError(elements.slotWizardTypeError, "Choisissez un type de créneau.");
+    } else if (slotWizard.type === "presentation") {
+      elements.slotWizardTypeStep.hidden = true;
+      elements.slotWizardStructureStep.hidden = false;
+    } else {
+      showSlotWizardDetails();
+    }
+  });
+  elements.slotWizardStructureBackBtn.addEventListener("click", () => {
+    elements.slotWizardTypeStep.hidden = false;
+    elements.slotWizardStructureStep.hidden = true;
+  });
+  elements.slotWizardStructureNextBtn.addEventListener("click", () => {
+    slotWizard.structure = document.querySelector('input[name="slotWizardStructure"]:checked').value;
+    showSlotWizardDetails();
+  });
+  elements.slotWizardDetailsBackBtn.addEventListener("click", () => {
+    elements.slotWizardDetailsStep.hidden = true;
+    if (slotWizard.type === "presentation") {
+      elements.slotWizardStructureStep.hidden = false;
+    } else {
+      elements.slotWizardTypeStep.hidden = false;
+    }
+  });
+  elements.slotWizardEndSlide.addEventListener("input", renderSlotWizardPreview);
+  elements.slotWizardDuration.addEventListener("input", renderSlotWizardPreview);
+  elements.slotWizardCreateBtn.addEventListener("click", createSlotsFromWizard);
 
   elements.slotsList.addEventListener("input", (event) => {
     const target = event.target;
