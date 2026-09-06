@@ -1,10 +1,10 @@
-export function getElapsedMs(presentation) {
-  if (!presentation.startedAt) {
+export function getElapsedMs(session) {
+  if (!session.startedAt) {
     return 0;
   }
 
-  const now = presentation.isPaused ? presentation.pausedAt ?? Date.now() : Date.now();
-  return Math.max(0, now - presentation.startedAt - presentation.totalPausedMs);
+  const now = session.isPaused ? session.pausedAt ?? Date.now() : Date.now();
+  return Math.max(0, now - session.startedAt - session.totalPausedMs);
 }
 
 export function formatClock(ms) {

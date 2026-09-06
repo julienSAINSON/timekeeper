@@ -129,6 +129,8 @@ test("Importe la fixture PDF et exécute le parcours de présentation", async ()
 
     documentToTest.querySelector("#pauseBtn").click();
     assert(!documentToTest.querySelector("#resumeBtn").disabled, "La reprise devrait être disponible après la pause.");
+    const persistedProject = JSON.parse(documentToTest.defaultView.localStorage.getItem(STORAGE_KEY));
+    assert(!Object.hasOwn(persistedProject, "presentation"), "La session ne doit pas être sauvegardée avec le projet.");
     documentToTest.querySelector("#resumeBtn").click();
     documentToTest.querySelector("#exitPresentationBtn").click();
     await waitFor(

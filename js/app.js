@@ -1,5 +1,4 @@
 import {
-  createDefaultPresentationState,
   createSlot,
   loadState,
   normalizeState,
@@ -18,6 +17,7 @@ import {
   getSlotStatus,
   getSlotTiming,
 } from "./timer.js";
+import { createSessionState } from "./session.js";
 import { calculateSlotReductions } from "./overrun.js";
 import { renderTimeline } from "./timeline.js";
 import {
@@ -52,6 +52,7 @@ let tutorialStrategyDialogOpen = false;
 let accessMode = null;
 let currentSession = null;
 let slotWizard = null;
+let presentationSession = null;
 const fullscreenSlotProgressColors = {
   ok: "#007a78",
   warning: "#b76e00",
@@ -233,6 +234,7 @@ function showAccessScreen() {
 
 function enterSandbox() {
   Object.assign(state, resetState());
+  presentationSession = null;
   savedProjectName = "";
   hasUnsavedChanges = false;
   currentPdfBuffer = null;
@@ -502,6 +504,7 @@ async function openProject(token) {
   }
 
   Object.assign(state, normalizeState(remoteState), { remoteToken: token });
+  presentationSession = null;
   currentPdfBuffer = null;
   elements.pdfInput.value = "";
   stopTicking();
@@ -528,6 +531,7 @@ async function deleteProject(token, projectName) {
 
   if (state.remoteToken === token) {
     Object.assign(state, resetState());
+    presentationSession = null;
     delete state.remoteToken;
     savedProjectName = "";
     hasUnsavedChanges = false;
@@ -590,6 +594,7 @@ function createNewProject() {
   }
 
   Object.assign(state, resetState());
+  presentationSession = null;
   delete state.remoteToken;
   savedProjectName = "";
   hasUnsavedChanges = false;
@@ -1005,11 +1010,11 @@ async function renderCurrentSlide() {
     elements.pdfStage.clientWidth - sideSpace * 2 - horizontalGutter,
   );
 
-  elements.slideCounter.textContent = `Slide ${state.presentation.currentSlide} / ${state.pageCount}`;
+  elements.slideCounter.textContent = `Slide ${presentationSession.currentSlide} / ${state.pageCount}`;
   elements.pdfLoading.hidden = false;
   try {
     await renderPage(
-      state.presentation.currentSlide,
+      presentationSession.currentSlide,
       elements.pdfCanvas,
       availableWidth,
       elements.pdfStage.clientHeight,
@@ -1020,24 +1025,24 @@ async function renderCurrentSlide() {
 }
 
 function getPresentationSummary() {
-  const slotTimings = getSlotTiming(state.slots, state.presentation.slotReductionsMs);
+  const slotTimings = getSlotTiming(state.slots, presentationSession.slotReductionsMs);
   const plenarySummary = validatePlenary(state.plenary, state.slots);
   const totalPlannedMs = plenarySummary.durationMinutes * 60 * 1000;
-  const elapsedMs = getElapsedMs(state.presentation);
-  const currentSlot = getCurrentSlot(slotTimings, state.presentation.currentSlide);
+  const elapsedMs = getElapsedMs(presentationSession);
+  const currentSlot = getCurrentSlot(slotTimings, presentationSession.currentSlide);
   const slotStartedElapsedMs = Number(
-    state.presentation.slotStartedElapsedMs[currentSlot?.id] ?? 0,
+    presentationSession.slotStartedElapsedMs[currentSlot?.id] ?? 0,
   );
   const slotStatus = getSlotStatus(
     currentSlot,
     elapsedMs - slotStartedElapsedMs,
-    state.presentation.currentSlide,
+    presentationSession.currentSlide,
   );
   const recordedCurrentOverrunMs = Number(
-    state.presentation.slotOverrunsMs[currentSlot?.id] || 0,
+    presentationSession.slotOverrunsMs[currentSlot?.id] || 0,
   );
   const totalDebtMs =
-    state.presentation.accruedDebtMs - recordedCurrentOverrunMs + slotStatus.overrunMs;
+    presentationSession.accruedDebtMs - recordedCurrentOverrunMs + slotStatus.overrunMs;
   const plannedEnd = new Date();
   const [endHours, endMinutes] = state.plenary.endTime.split(":").map(Number);
   plannedEnd.setHours(endHours, endMinutes, 0, 0);
@@ -1052,10 +1057,10 @@ function getPresentationSummary() {
     currentSlot,
     slotStatus,
     totalDebtMs,
-    initialDelayMs: state.presentation.initialDelayMs,
-    initialAdvanceMs: state.presentation.initialAdvanceMs,
+    initialDelayMs: presentationSession.initialDelayMs,
+    initialAdvanceMs: presentationSession.initialAdvanceMs,
     inheritedSlotOverrunMs: 0,
-    slotOverrunsMs: state.presentation.slotOverrunsMs,
+    slotOverrunsMs: presentationSession.slotOverrunsMs,
     unallocatedDurationMs: plenarySummary.unallocatedMinutes * 60 * 1000,
     plannedEnd,
     estimatedEnd,
@@ -1091,6 +1096,10 @@ function renderFullscreenSlotProgress(currentSlot, slotStatus) {
 }
 
 function renderPresentationMetrics() {
+  if (!presentationSession) {
+    return;
+  }
+
   let presentationSummary = getPresentationSummary();
   if (presentationSummary.currentSlot && presentationSummary.slotStatus.overrunMs > 0) {
     applyOverrunStrategy(
@@ -1159,14 +1168,14 @@ function renderPresentationMetrics() {
     markerElement: elements.nowMarker,
     slotTimings,
     elapsedMs,
-    currentSlide: state.presentation.currentSlide,
+    currentSlide: presentationSession.currentSlide,
     totalDebtMs,
     initialDelayMs,
     slotOverrunsMs,
     currentOverrunMs: slotStatus.overrunMs,
     totalDurationMs: totalPlannedMs,
     unallocatedDurationMs,
-    slotReductionsMs: state.presentation.slotReductionsMs,
+    slotReductionsMs: presentationSession.slotReductionsMs,
     currentSlotElapsedMs: slotStatus.slotElapsedMs,
     initialAdvanceMs,
   });
@@ -1178,6 +1187,9 @@ function startTicking() {
     renderPresentationMetrics();
   }, 250);
   const animateFullscreenProgress = () => {
+    if (!presentationSession) {
+      return;
+    }
     const { currentSlot, slotStatus } = getPresentationSummary();
     renderFullscreenSlotProgress(currentSlot, slotStatus);
     fullscreenProgressAnimationHandle = window.requestAnimationFrame(animateFullscreenProgress);
@@ -1191,7 +1203,7 @@ function escapeCsvValue(value) {
 
 function exportPresentationReport() {
   const presentationSummary = getPresentationSummary();
-  const overrunsMs = { ...state.presentation.slotOverrunsMs };
+  const overrunsMs = { ...presentationSession.slotOverrunsMs };
   if (presentationSummary.currentSlot && presentationSummary.slotStatus.overrunMs > 0) {
     overrunsMs[presentationSummary.currentSlot.id] = presentationSummary.slotStatus.overrunMs;
   }
@@ -1202,7 +1214,7 @@ function exportPresentationReport() {
       slot.name,
       formatClock(Number(slot.durationMinutes) * 60 * 1000),
       formatClock(Number(overrunsMs[slot.id] || 0)),
-      formatClock(state.presentation.initialDelayMs),
+      formatClock(presentationSession.initialDelayMs),
     ]),
   ];
   const csv = `\uFEFF${rows.map((row) => row.map(escapeCsvValue).join(";")).join("\r\n")}`;
@@ -1227,7 +1239,7 @@ function stopTicking() {
 }
 
 function captureCompletedSlotDebt(previousSlide, nextSlide) {
-  const slotTimings = getSlotTiming(state.slots, state.presentation.slotReductionsMs);
+  const slotTimings = getSlotTiming(state.slots, presentationSession.slotReductionsMs);
   const previousSlot = getCurrentSlot(slotTimings, previousSlide);
   const nextSlot = getCurrentSlot(slotTimings, nextSlide);
 
@@ -1235,63 +1247,64 @@ function captureCompletedSlotDebt(previousSlide, nextSlide) {
     return;
   }
 
-  const elapsedMs = getElapsedMs(state.presentation);
-  const slotStartedElapsedMs = Number(state.presentation.slotStartedElapsedMs[previousSlot.id] ?? 0);
+  const elapsedMs = getElapsedMs(presentationSession);
+  const slotStartedElapsedMs = Number(presentationSession.slotStartedElapsedMs[previousSlot.id] ?? 0);
   const lateMs = Math.max(0, elapsedMs - slotStartedElapsedMs - previousSlot.durationMs);
-  const previousLateMs = Number(state.presentation.slotOverrunsMs[previousSlot.id] || 0);
-  state.presentation.slotOverrunsMs[previousSlot.id] = lateMs;
-  state.presentation.accruedDebtMs += lateMs - previousLateMs;
+  const previousLateMs = Number(presentationSession.slotOverrunsMs[previousSlot.id] || 0);
+  presentationSession.slotOverrunsMs[previousSlot.id] = lateMs;
+  presentationSession.accruedDebtMs += lateMs - previousLateMs;
   applyOverrunStrategy(state.slots.findIndex((slot) => slot.id === previousSlot.id));
 }
 
-function applyOverrunStrategy(completedSlotIndex, totalDebtMs = state.presentation.accruedDebtMs) {
+function applyOverrunStrategy(completedSlotIndex, totalDebtMs = presentationSession.accruedDebtMs) {
   const plenarySummary = validatePlenary(state.plenary, state.slots);
-  state.presentation.slotReductionsMs = calculateSlotReductions({
+  presentationSession.slotReductionsMs = calculateSlotReductions({
     slots: state.slots,
     completedSlotIndex,
     totalDebtMs,
     unallocatedDurationMs: plenarySummary.unallocatedMinutes * 60 * 1000,
-    strategy: state.presentation.overrunStrategy,
-    slotReductionsMs: state.presentation.slotReductionsMs,
+    strategy: presentationSession.overrunStrategy,
+    slotReductionsMs: presentationSession.slotReductionsMs,
   });
 }
 
-async function enterPresentationMode() {
+async function enterPresentationMode(overrunStrategy = "next") {
   await ensurePdfLoaded();
+  presentationSession = createSessionState(state.slots[0]?.startSlide ?? 1);
+  presentationSession.overrunStrategy = overrunStrategy;
 
-  if (!state.presentation.startedAt) {
+  if (!presentationSession.startedAt) {
     const plannedStart = new Date();
     const [startHours, startMinutes] = state.plenary.startTime.split(":").map(Number);
     plannedStart.setHours(startHours, startMinutes, 0, 0);
     const startDifferenceMs = Date.now() - plannedStart.getTime();
-    state.presentation.initialDelayMs = Math.max(0, startDifferenceMs);
-    state.presentation.initialAdvanceMs = Math.max(0, -startDifferenceMs);
-    state.presentation.accruedDebtMs = state.presentation.initialDelayMs;
-    applyOverrunStrategy(-1, state.presentation.initialDelayMs);
+    presentationSession.initialDelayMs = Math.max(0, startDifferenceMs);
+    presentationSession.initialAdvanceMs = Math.max(0, -startDifferenceMs);
+    presentationSession.accruedDebtMs = presentationSession.initialDelayMs;
+    applyOverrunStrategy(-1, presentationSession.initialDelayMs);
   }
 
-  if (state.presentation.isPaused && state.presentation.pausedAt) {
-    state.presentation.totalPausedMs += Date.now() - state.presentation.pausedAt;
+  if (presentationSession.isPaused && presentationSession.pausedAt) {
+    presentationSession.totalPausedMs += Date.now() - presentationSession.pausedAt;
   }
-  state.presentation.isRunning = true;
-  state.presentation.isPaused = false;
-  state.presentation.currentSlide = Math.min(state.presentation.currentSlide || 1, state.pageCount);
-  state.presentation.startedAt ??= Date.now();
+  presentationSession.isRunning = true;
+  presentationSession.isPaused = false;
+  presentationSession.currentSlide = Math.min(presentationSession.currentSlide || 1, state.pageCount);
+  presentationSession.startedAt ??= Date.now();
   const initialSlot = getCurrentSlot(
-    getSlotTiming(state.slots, state.presentation.slotReductionsMs),
-    state.presentation.currentSlide,
+    getSlotTiming(state.slots, presentationSession.slotReductionsMs),
+    presentationSession.currentSlide,
   );
-  if (initialSlot && state.presentation.slotStartedElapsedMs[initialSlot.id] === undefined) {
-    state.presentation.slotStartedElapsedMs[initialSlot.id] = Math.max(
-      getElapsedMs(state.presentation),
-      state.presentation.initialAdvanceMs,
+  if (initialSlot && presentationSession.slotStartedElapsedMs[initialSlot.id] === undefined) {
+    presentationSession.slotStartedElapsedMs[initialSlot.id] = Math.max(
+      getElapsedMs(presentationSession),
+      presentationSession.initialAdvanceMs,
     );
   }
-  state.presentation.pausedAt = null;
-  state.presentation.totalPausedMs = state.presentation.totalPausedMs || 0;
+  presentationSession.pausedAt = null;
+  presentationSession.totalPausedMs = presentationSession.totalPausedMs || 0;
   elements.pauseBtn.disabled = false;
   elements.resumeBtn.disabled = true;
-  persist();
   switchView(true);
   setPresentationDetailsCollapsed(true);
   renderPresentationMetrics();
@@ -1305,61 +1318,58 @@ function leavePresentationMode() {
   pausePresentation();
   switchView(false);
   stopTicking();
+  presentationSession = null;
 }
 
 function nextSlide() {
-  if (state.presentation.currentSlide >= state.pageCount) {
+  if (presentationSession.currentSlide >= state.pageCount) {
     return;
   }
 
-  captureCompletedSlotDebt(state.presentation.currentSlide, state.presentation.currentSlide + 1);
-  state.presentation.currentSlide += 1;
+  captureCompletedSlotDebt(presentationSession.currentSlide, presentationSession.currentSlide + 1);
+  presentationSession.currentSlide += 1;
   const nextSlot = getCurrentSlot(
-    getSlotTiming(state.slots, state.presentation.slotReductionsMs),
-    state.presentation.currentSlide,
+    getSlotTiming(state.slots, presentationSession.slotReductionsMs),
+    presentationSession.currentSlide,
   );
-  if (nextSlot && state.presentation.slotStartedElapsedMs[nextSlot.id] === undefined) {
-    state.presentation.slotStartedElapsedMs[nextSlot.id] = getElapsedMs(state.presentation);
+  if (nextSlot && presentationSession.slotStartedElapsedMs[nextSlot.id] === undefined) {
+    presentationSession.slotStartedElapsedMs[nextSlot.id] = getElapsedMs(presentationSession);
   }
-  persist();
   renderCurrentSlide();
   renderPresentationMetrics();
 }
 
 function previousSlide() {
-  if (state.presentation.currentSlide <= 1) {
+  if (presentationSession.currentSlide <= 1) {
     return;
   }
 
-  state.presentation.currentSlide -= 1;
-  persist();
+  presentationSession.currentSlide -= 1;
   renderCurrentSlide();
   renderPresentationMetrics();
 }
 
 function pausePresentation() {
-  if (state.presentation.isPaused || !state.presentation.startedAt) {
+  if (!presentationSession || presentationSession.isPaused || !presentationSession.startedAt) {
     return;
   }
 
-  state.presentation.isPaused = true;
-  state.presentation.pausedAt = Date.now();
+  presentationSession.isPaused = true;
+  presentationSession.pausedAt = Date.now();
   elements.pauseBtn.disabled = true;
   elements.resumeBtn.disabled = false;
-  persist();
 }
 
 function resumePresentation() {
-  if (!state.presentation.isPaused || !state.presentation.pausedAt) {
+  if (!presentationSession || !presentationSession.isPaused || !presentationSession.pausedAt) {
     return;
   }
 
-  state.presentation.totalPausedMs += Date.now() - state.presentation.pausedAt;
-  state.presentation.isPaused = false;
-  state.presentation.pausedAt = null;
+  presentationSession.totalPausedMs += Date.now() - presentationSession.pausedAt;
+  presentationSession.isPaused = false;
+  presentationSession.pausedAt = null;
   elements.pauseBtn.disabled = false;
   elements.resumeBtn.disabled = true;
-  persist();
 }
 
 function resetPresentation() {
@@ -1367,7 +1377,7 @@ function resetPresentation() {
     return;
   }
 
-  state.presentation = createDefaultPresentationState();
+  presentationSession = createSessionState(state.slots[0]?.startSlide ?? 1);
   elements.pauseBtn.disabled = false;
   elements.resumeBtn.disabled = true;
   persist();
@@ -1386,6 +1396,7 @@ function clearConfiguration() {
     freshState.remoteToken = remoteToken;
   }
   Object.assign(state, freshState);
+  presentationSession = null;
   hasUnsavedChanges = false;
   persist();
   currentPdfBuffer = null;
@@ -1422,7 +1433,7 @@ async function handlePdfImport(event) {
     currentPdfBuffer = pdfBuffer;
     state.pdfName = file.name;
     state.pageCount = pdf.numPages;
-    state.presentation = createDefaultPresentationState();
+    presentationSession = null;
 
     if (state.slots.length === 0) {
       state.slots.push(createSlot(state.pageCount));
@@ -1563,8 +1574,7 @@ function attachEvents() {
       return;
     }
     const selectedStrategy = document.querySelector('input[name="overrunStrategy"]:checked');
-    state.presentation.overrunStrategy = selectedStrategy?.value || "next";
-    enterPresentationMode().catch((error) => {
+    enterPresentationMode(selectedStrategy?.value || "next").catch((error) => {
       console.error(error);
       window.alert(
         error.message || "Impossible de démarrer la présentation. Vérifiez le chargement du PDF.",
@@ -1681,7 +1691,7 @@ function attachEvents() {
       previousSlide();
     } else if (event.key.toLowerCase() === "p") {
       event.preventDefault();
-      if (state.presentation.isPaused) {
+      if (presentationSession?.isPaused) {
         resumePresentation();
       } else {
         pausePresentation();

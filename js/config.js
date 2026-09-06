@@ -1,23 +1,5 @@
 const STORAGE_KEY = "safe-timekeeper-config-v1";
 
-export function createDefaultPresentationState() {
-  return {
-    isRunning: false,
-    isPaused: false,
-    currentSlide: 1,
-    startedAt: null,
-    pausedAt: null,
-    totalPausedMs: 0,
-    accruedDebtMs: 0,
-    initialDelayMs: 0,
-    initialAdvanceMs: 0,
-    slotOverrunsMs: {},
-    slotReductionsMs: {},
-    slotStartedElapsedMs: {},
-    overrunStrategy: "next",
-  };
-}
-
 function createDefaultState() {
   return {
     projectName: "",
@@ -29,7 +11,6 @@ function createDefaultState() {
       endTime: "",
       durationMinutes: "",
     },
-    presentation: createDefaultPresentationState(),
   };
 }
 
@@ -55,6 +36,7 @@ function normalizeSlots(rawSlots) {
 
 export function normalizeState(rawState) {
   const defaultState = createDefaultState();
+  const { presentation: _legacyPresentation, ...projectState } = rawState || {};
   const rawPlenary = rawState?.plenary || {};
   const legacyDurationMinutes = getDurationFromTimes(rawPlenary.startTime, rawPlenary.endTime);
   const enteredDurationMinutes = Number(rawPlenary.durationMinutes);
@@ -71,13 +53,9 @@ export function normalizeState(rawState) {
 
   return {
     ...defaultState,
-    ...rawState,
+    ...projectState,
     slots: normalizeSlots(rawState?.slots),
     plenary,
-    presentation: {
-      ...defaultState.presentation,
-      ...rawState?.presentation,
-    },
   };
 }
 
@@ -181,6 +159,7 @@ export function saveState(state) {
     ...state,
   };
   delete persistedState.pdfDataUrl;
+  delete persistedState.presentation;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(persistedState));
 }
 

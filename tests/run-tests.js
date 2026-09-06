@@ -1,6 +1,5 @@
 import {
   createSlot,
-  createDefaultPresentationState,
   getPlenaryEndTime,
   loadState,
   normalizeState,
@@ -8,6 +7,7 @@ import {
   validatePlenary,
   validateSlots,
 } from "../js/config.js";
+import { createSessionState } from "../js/session.js";
 import {
   formatClock,
   getCurrentSlot,
@@ -65,10 +65,13 @@ function renderTestTimeline(options = {}) {
 }
 
 test("Normalise un ancien projet et calcule son heure de fin", () => {
-  const state = normalizeState({ plenary: { startTime: "09:30", endTime: "11:00" } });
+  const state = normalizeState({
+    plenary: { startTime: "09:30", endTime: "11:00" },
+    presentation: { currentSlide: 9, startedAt: 123 },
+  });
   equal(state.plenary.durationMinutes, 90);
   equal(state.plenary.endTime, "11:00");
-  equal(state.presentation.initialAdvanceMs, 0);
+  equal(state.presentation, undefined);
 });
 
 test("Calcule les heures de fin avec passage de minuit", () => {
@@ -77,11 +80,25 @@ test("Calcule les heures de fin avec passage de minuit", () => {
   equal(getPlenaryEndTime({ startTime: "99:99", durationMinutes: 30 }), "");
 });
 
-test("Crée un état de présentation isolé pour chaque réinitialisation", () => {
-  const firstState = createDefaultPresentationState();
-  const secondState = createDefaultPresentationState();
-  firstState.slotOverrunsMs.slot = 1000;
-  equal(secondState.slotOverrunsMs.slot, undefined);
+test("Crée un état de session isolé pour chaque présentation", () => {
+  const firstSession = createSessionState(4);
+  const secondSession = createSessionState(8);
+  firstSession.slotOverrunsMs.slot = 1000;
+  equal(firstSession.currentSlide, 4);
+  equal(secondSession.currentSlide, 8);
+  equal(secondSession.slotOverrunsMs.slot, undefined);
+  equal(secondSession.currentSlotId, undefined);
+});
+
+test("Le calcul du timer conserve le comportement de pause avec la session", () => {
+  const now = Date.now();
+  const session = createSessionState(1);
+  session.startedAt = now - 10000;
+  session.isPaused = true;
+  session.pausedAt = now - 2000;
+  session.totalPausedMs = 3000;
+  const elapsed = getElapsedMs(session);
+  assert(elapsed >= 4990 && elapsed <= 5010, `Temps calculé inattendu : ${elapsed}.`);
 });
 
 test("Normalise les créneaux restaurés malformés", () => {
@@ -135,6 +152,26 @@ test("Préserve les nouveaux attributs après sauvegarde et rechargement local",
     const loadedState = loadState();
     equal(loadedState.slots[0].type, "question");
     equal(loadedState.slots[0].optional, true);
+  } finally {
+    if (previousState === null) {
+      localStorage.removeItem(storageKey);
+    } else {
+      localStorage.setItem(storageKey, previousState);
+    }
+  }
+});
+
+test("N'enregistre pas l'état runtime de session dans le projet", () => {
+  const storageKey = "safe-timekeeper-config-v1";
+  const previousState = localStorage.getItem(storageKey);
+  try {
+    saveState({
+      projectName: "Projet test",
+      presentation: createSessionState(3),
+    });
+    const persistedState = JSON.parse(localStorage.getItem(storageKey));
+    equal(persistedState.presentation, undefined);
+    equal(loadState().presentation, undefined);
   } finally {
     if (previousState === null) {
       localStorage.removeItem(storageKey);
