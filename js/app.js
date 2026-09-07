@@ -14,9 +14,10 @@ import {
   formatHour,
   getCurrentSlot,
   getElapsedMs,
+  getSessionDelayMs,
   getSlotStatus,
   getSlotTiming,
-} from "./timer.js";
+} from "./timer.js?v=session-delay-v1";
 import { createSessionState } from "./session.js";
 import {
   generateRoomToken,
@@ -263,6 +264,9 @@ const elements = {
   slotStatusText: document.querySelector("#slotStatusText"),
   timeDebt: document.querySelector("#timeDebt"),
   debtBadge: document.querySelector("#debtBadge"),
+  sessionDelayBadge: document.querySelector("#sessionDelayBadge"),
+  sessionDelayLabel: document.querySelector("#sessionDelayLabel"),
+  sessionDelay: document.querySelector("#sessionDelay"),
   estimatedEnd: document.querySelector("#estimatedEnd"),
   timelineTrack: document.querySelector("#timelineTrack"),
   nowMarker: document.querySelector("#nowMarker"),
@@ -1723,6 +1727,17 @@ function renderPresentationMetrics() {
   elements.sideNextSlotName.textContent = nextSlot?.name ?? "Fin de la plénière";
   elements.sideNextSlotTime.textContent = nextSlot ? formatClock(nextSlot.durationMs) : "--:--";
   elements.timeDebt.textContent = `+${formatClock(totalDebtMs)}`;
+    const sessionDelayMs = getSessionDelayMs(presentationSession, slotTimings, presentationSession.currentSlide);
+    const showSessionDelay = viewMode === "monitoring" && sessionDelayMs !== null;
+    elements.sessionDelayBadge.hidden = !showSessionDelay;
+    if (showSessionDelay) {
+      const isAhead = sessionDelayMs < 0;
+      const tone = sessionDelayMs > 0 ? "danger" : isAhead ? "warning" : "ok";
+      elements.sessionDelayLabel.textContent = isAhead ? "Avance" : "Retard";
+      elements.sessionDelay.textContent = `${sessionDelayMs > 0 ? "+" : ""}${formatClock(Math.abs(sessionDelayMs))}`;
+      elements.sessionDelayBadge.classList.remove("status-ok", "status-warning", "status-danger");
+      elements.sessionDelayBadge.classList.add(`status-${tone}`);
+    }
   elements.estimatedEnd.textContent =
     plannedEnd && estimatedEnd
       ? scheduleExtended

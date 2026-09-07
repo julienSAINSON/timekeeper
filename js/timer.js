@@ -48,6 +48,16 @@ export function getCurrentSlot(slotTimings, currentSlide) {
   ) ?? null;
 }
 
+export function getPlannedElapsedMs(slotTimings, currentSlide) {
+  const currentSlot = getCurrentSlot(slotTimings, currentSlide);
+  return currentSlot ? currentSlot.startOffsetMs : null;
+}
+
+export function getSessionDelayMs(session, slotTimings, currentSlide) {
+  const plannedElapsedMs = getPlannedElapsedMs(slotTimings, currentSlide);
+  return plannedElapsedMs === null ? null : getElapsedMs(session) - plannedElapsedMs;
+}
+
 export function getSlotStatus(slot, slotElapsedMs, currentSlide) {
   if (!slot) {
     return {

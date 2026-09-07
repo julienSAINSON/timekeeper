@@ -37,9 +37,11 @@ import {
   formatClock,
   getCurrentSlot,
   getElapsedMs,
+  getPlannedElapsedMs,
+  getSessionDelayMs,
   getSlotStatus,
   getSlotTiming,
-} from "../js/timer.js";
+} from "../js/timer.js?v=session-delay-v1";
 import { calculateSlotReductions } from "../js/overrun.js";
 import { renderTimeline } from "../js/timeline.js";
 
@@ -491,6 +493,38 @@ test("Construit les offsets temporels des créneaux", () => {
   equal(timings[0].endOffsetMs, 300000);
   equal(timings[1].startOffsetMs, 300000);
   equal(timings[1].endOffsetMs, 900000);
+});
+
+test("Dérive un retard nul au début de la session", () => {
+  const session = createSessionState(1);
+  session.startedAt = Date.now();
+  const delay = getSessionDelayMs(session, getSlotTiming([slot("a", 1, 1, 5)]), 1);
+  assert(delay >= 0 && delay < 100, `Retard initial inattendu : ${delay}.`);
+  assert(!Object.hasOwn(session, "delay"));
+});
+
+test("Dérive le retard ou l'avance depuis la position de slide", () => {
+  const timings = getSlotTiming([slot("a", 1, 1, 5), slot("b", 2, 2, 5)]);
+  const now = Date.now();
+  const lateSession = { startedAt: now - 360000, totalPausedMs: 0, isPaused: false };
+  const earlySession = { startedAt: now - 240000, totalPausedMs: 0, isPaused: false };
+  const lateDelay = getSessionDelayMs(lateSession, timings, 2);
+  const earlyDelay = getSessionDelayMs(earlySession, timings, 2);
+  assert(lateDelay >= 59900 && lateDelay <= 60100, `Retard attendu proche de 60 s, obtenu ${lateDelay}.`);
+  assert(earlyDelay >= -60100 && earlyDelay <= -59900, `Avance attendue proche de 60 s, obtenue ${earlyDelay}.`);
+  equal(getPlannedElapsedMs(timings, 1), 0);
+  equal(getPlannedElapsedMs(timings, 2), 300000);
+});
+
+test("Fige le retard pendant la pause et le reprend ensuite", () => {
+  const timings = getSlotTiming([slot("a", 1, 1, 5)]);
+  const now = Date.now();
+  const pausedSession = { startedAt: now - 120000, totalPausedMs: 0, isPaused: true, pausedAt: now - 30000 };
+  const pausedDelay = getSessionDelayMs(pausedSession, timings, 1);
+  assert(pausedDelay >= 89900 && pausedDelay <= 90100, `Retard en pause inattendu : ${pausedDelay}.`);
+  const resumedSession = { startedAt: now - 130000, totalPausedMs: 30000, isPaused: false };
+  const resumedDelay = getSessionDelayMs(resumedSession, timings, 1);
+  assert(resumedDelay >= 99900 && resumedDelay <= 100100, `Retard après reprise inattendu : ${resumedDelay}.`);
 });
 
 test("Respecte la durée minimale d'une seconde après réduction", () => {
