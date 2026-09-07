@@ -70,7 +70,7 @@ import {
   publishPublicRoomActivity,
   updateOwnedSessionQuestionStatus,
   updatePresentationSession,
-} from "./supabase.js?v=quiz-participant-v1";
+} from "./supabase.js?v=local-project-recovery-v1";
 import {
   getCurrentAccessToken,
   getCurrentUser,
@@ -2009,22 +2009,29 @@ async function enterPresentationMode(overrunStrategy = "next") {
       switchView(false);
       throw new Error("Sauvegardez ce projet avant de démarrer une session synchronisée.");
     }
-    const remoteSession = await createPresentationSession(state.remoteToken, presentationSession);
-    activeSessionId = remoteSession.id;
-    sessionVersion = Number(remoteSession.version);
-    activeRoomToken = generateRoomToken();
-    await createPublicSessionRoom(activeSessionId, activeRoomToken);
-    const presentationUrl = new URL(window.location.href);
-    presentationUrl.searchParams.set("view", "presentation");
-    presentationUrl.searchParams.set("sessionId", activeSessionId);
-    window.history.replaceState({}, "", presentationUrl.href);
-    stopSessionSubscription?.();
-    stopSessionSubscription = subscribeToPresentationSession(activeSessionId, (updatedSession) => {
-      if (Number(updatedSession.version) > sessionVersion) {
-        applySessionRecord(updatedSession);
-      }
-    });
-    renderRoomAccess();
+    try {
+      const remoteSession = await createPresentationSession(state.remoteToken, presentationSession);
+      activeSessionId = remoteSession.id;
+      sessionVersion = Number(remoteSession.version);
+      activeRoomToken = generateRoomToken();
+      await createPublicSessionRoom(activeSessionId, activeRoomToken);
+      const presentationUrl = new URL(window.location.href);
+      presentationUrl.searchParams.set("view", "presentation");
+      presentationUrl.searchParams.set("sessionId", activeSessionId);
+      window.history.replaceState({}, "", presentationUrl.href);
+      stopSessionSubscription?.();
+      stopSessionSubscription = subscribeToPresentationSession(activeSessionId, (updatedSession) => {
+        if (Number(updatedSession.version) > sessionVersion) {
+          applySessionRecord(updatedSession);
+        }
+      });
+      renderRoomAccess();
+    } catch (error) {
+      if (error.code !== "P0001") throw error;
+      state.remoteToken = null;
+      persist();
+      elements.storageStatus.textContent = "Projet distant indisponible : présentation locale";
+    }
   }
   syncPresentationSession();
   renderPresentationMetrics();

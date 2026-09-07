@@ -28,8 +28,14 @@ async function callRpc(name, body) {
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(error || "La synchronisation Supabase a échoué.");
+    const responseText = await response.text();
+    let errorBody = null;
+    try {
+      errorBody = JSON.parse(responseText);
+    } catch {}
+    const error = new Error(errorBody?.message || responseText || "La synchronisation Supabase a échoué.");
+    error.code = errorBody?.code || null;
+    throw error;
   }
 
   return response.status === 204 ? null : response.json();
