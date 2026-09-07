@@ -78,6 +78,19 @@ export function getQuizResponseRows(quiz, counts) {
     }));
 }
 
+export function getQuizMonitoringEntries(slots, currentSlide, slotStartedElapsedMs) {
+  return (Array.isArray(slots) ? slots : [])
+    .filter((slot) => slot?.type === "quiz" && slot.quiz)
+    .map((slot) => {
+      const isActive = currentSlide >= Number(slot.startSlide) && currentSlide <= Number(slot.endSlide);
+      const wasStarted = Object.hasOwn(slotStartedElapsedMs || {}, slot.id);
+      return {
+        slot,
+        status: isActive ? "active" : wasStarted ? "completed" : "upcoming",
+      };
+    });
+}
+
 export function normalizeQuizDraft(question, optionLabels) {
   const cleanQuestion = String(question || "").trim();
   const options = optionLabels.map((label, index) => ({

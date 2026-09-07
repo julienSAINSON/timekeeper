@@ -389,11 +389,9 @@
               <section id="quizResponsesPanel" class="questions-panel" hidden aria-labelledby="quizResponsesTitle">
                 <div>
                   <p class="eyebrow">Audience</p>
-                  <h3 id="quizResponsesTitle">Quiz en cours</h3>
+                  <h3 id="quizResponsesTitle">Quiz</h3>
                 </div>
-                <p id="quizResponsesQuestion" class="quiz-responses-question"></p>
-                <div id="quizResponsesOptions" class="quiz-responses-options"></div>
-                <p id="quizResponsesTotal" class="quiz-responses-count">Total : 0 réponse</p>
+                <div id="quizMonitoringList" class="quiz-monitoring-list" aria-live="polite"></div>
               </section>
               <div class="presentation-help">
                 Raccourcis: ← → Espace pour naviguer, <kbd>P</kbd> pause/reprise, <kbd>F</kbd> ou <kbd>F11</kbd> plein écran.
@@ -430,6 +428,6 @@
       data-pdfjs="true"
     ></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <script type="module" src="./js/app.js?v=quiz-monitoring-realtime-v1"></script>
+    <script type="module" src="./js/app.js?v=quiz-monitoring-history-v1"></script>
   </body>
 </html>

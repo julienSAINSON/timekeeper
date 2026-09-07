@@ -24,6 +24,7 @@ import {
 import {
   createQuizConfiguration,
   getParticipantId,
+  getQuizMonitoringEntries,
   getQuizResponseRows,
   normalizeQuizConfiguration,
   normalizePublicQuizActivity,
@@ -228,6 +229,35 @@ test("Prépare les compteurs agrégés pour les quatre propositions", () => {
   equal(rows.length, 4);
   equal(rows.reduce((total, row) => total + row.count, 0), 42);
   assert(rows.every((row) => !Object.hasOwn(row, "participant_id")));
+});
+
+test("Conserve les Quiz rencontrés dans l'ordre de la timeline", () => {
+  const firstQuiz = createQuizConfiguration();
+  const secondQuiz = createQuizConfiguration();
+  const thirdQuiz = createQuizConfiguration();
+  const slots = [
+    { id: "quiz-1", name: "Quiz 1", type: "quiz", startSlide: 4, endSlide: 5, quiz: firstQuiz },
+    { id: "quiz-2", name: "Quiz 2", type: "quiz", startSlide: 10, endSlide: 10, quiz: secondQuiz },
+    { id: "quiz-3", name: "Quiz 3", type: "quiz", startSlide: 16, endSlide: 17, quiz: thirdQuiz },
+  ];
+  const entries = getQuizMonitoringEntries(slots, 10, { "quiz-1": 100, "quiz-2": 200 });
+  equal(entries.map((entry) => entry.slot.id).join(","), "quiz-1,quiz-2,quiz-3");
+  equal(entries.map((entry) => entry.status).join(","), "completed,active,upcoming");
+});
+
+test("Reconstruit un Quiz terminé sans résultat à partir de la session", () => {
+  const quiz = createQuizConfiguration();
+  const slots = [{ id: "quiz-1", name: "Quiz", type: "quiz", startSlide: 4, endSlide: 4, quiz }];
+  const entries = getQuizMonitoringEntries(slots, 8, { "quiz-1": 100 });
+  equal(entries[0].status, "completed");
+  assert(!Object.hasOwn(entries[0], "participant_id"));
+});
+
+test("Ne marque pas un Quiz à venir comme terminé", () => {
+  const quiz = createQuizConfiguration();
+  const slots = [{ id: "quiz-1", name: "Quiz", type: "quiz", startSlide: 4, endSlide: 4, quiz }];
+  const entries = getQuizMonitoringEntries(slots, 2, {});
+  equal(entries[0].status, "upcoming");
 });
 
 test("Préserve l'identifiant et les options du Quiz lors de la persistence locale", () => {

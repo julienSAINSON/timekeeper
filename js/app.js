@@ -32,6 +32,7 @@ import {
 import {
   createQuizConfiguration,
   getParticipantId,
+  getQuizMonitoringEntries,
   getQuizResponseRows,
   normalizePublicQuizActivity,
   validateQuizConfiguration,
@@ -96,6 +97,8 @@ let stopQuizResponseEvents = null;
 let publicQuiz = null;
 let publicQuizSelection = null;
 let monitoredQuizId = null;
+let quizMonitoringSignature = null;
+const quizResponseSummaries = new Map();
 let sessionWriteQueue = Promise.resolve();
 let sessionQuestions = [];
 let selectedQuestionId = null;
@@ -282,9 +285,7 @@ const elements = {
   publicQuizSubmit: document.querySelector("#publicQuizSubmit"),
   publicQuizFeedback: document.querySelector("#publicQuizFeedback"),
   quizResponsesPanel: document.querySelector("#quizResponsesPanel"),
-  quizResponsesQuestion: document.querySelector("#quizResponsesQuestion"),
-  quizResponsesOptions: document.querySelector("#quizResponsesOptions"),
-  quizResponsesTotal: document.querySelector("#quizResponsesTotal"),
+  quizMonitoringList: document.querySelector("#quizMonitoringList"),
   questionsPanel: document.querySelector("#questionsPanel"),
   questionsList: document.querySelector("#questionsList"),
   selectedQuestion: document.querySelector("#selectedQuestion"),
@@ -1399,13 +1400,16 @@ async function joinPresentationSession(sessionId) {
     throw new Error("Cette session est introuvable ou vous n'y avez pas accès.");
   }
   applySessionRecord(record);
+  quizResponseSummaries.clear();
+  quizMonitoringSignature = null;
+  monitoredQuizId = null;
   const room = await loadOwnedPublicSessionRoom(sessionId);
   activeRoomToken = room?.roomToken || null;
   stopQuizResponseEvents?.();
   if (viewMode === "monitoring") {
     stopQuizResponseEvents = subscribeToQuizResponseEvents(sessionId, ({ new: event }) => {
       if (event.quiz_id === monitoredQuizId) {
-        refreshQuizResponseSummary().catch((error) => console.error("Impossible d'actualiser les réponses au quiz.", error));
+        refreshQuizMonitoring(true).catch((error) => console.error("Impossible d'actualiser les réponses au quiz.", error));
       }
     });
   }
@@ -1420,41 +1424,56 @@ async function joinPresentationSession(sessionId) {
   });
 }
 
-async function refreshQuizResponseSummary(currentSlot = getPresentationSummary().currentSlot) {
-  const quiz = currentSlot?.type === "quiz" ? currentSlot.quiz : null;
-  const isMonitoring = viewMode === "monitoring" && Boolean(activeSessionId && quiz);
-  elements.quizResponsesPanel.hidden = !isMonitoring;
-  if (!isMonitoring) {
-    monitoredQuizId = null;
-    elements.quizResponsesOptions.replaceChildren();
-    return;
-  }
+function renderQuizMonitoring(entries) {
+  elements.quizResponsesPanel.hidden = viewMode !== "monitoring" || !entries.length;
+  elements.quizMonitoringList.replaceChildren(...entries.map(({ slot, status }) => {
+    const item = document.createElement("section");
+    item.className = `quiz-monitoring-item is-${status}`;
+    const stateLabel = document.createElement("p");
+    stateLabel.className = "quiz-monitoring-status";
+    stateLabel.textContent = status === "active" ? "● QUIZ ACTIF" : status === "completed" ? "✓ TERMINÉ" : "○ À VENIR";
+    const title = document.createElement("strong");
+    title.textContent = slot.name;
+    const question = document.createElement("p");
+    question.className = "quiz-responses-question";
+    question.textContent = slot.quiz.question;
+    item.append(stateLabel, title, question);
+    const validation = validateQuizConfiguration(slot.quiz);
+    if (!validation.valid) {
+      item.append(Object.assign(document.createElement("p"), { textContent: "La configuration de ce Quiz est incomplète." }));
+    } else if (status === "upcoming") {
+      item.append(Object.assign(document.createElement("p"), { className: "quiz-responses-count", textContent: "Résultats disponibles après activation." }));
+    } else {
+      const summary = quizResponseSummaries.get(slot.quiz.id) || { counts: {}, totalResponses: 0 };
+      const options = document.createElement("div");
+      options.className = "quiz-responses-options";
+      options.replaceChildren(...getQuizResponseRows(slot.quiz, summary.counts).map((option) => {
+        const row = document.createElement("div");
+        row.className = "quiz-response-option";
+        row.append(
+          Object.assign(document.createElement("strong"), { textContent: option.id }),
+          Object.assign(document.createElement("span"), { textContent: option.label }),
+          Object.assign(document.createElement("span"), { textContent: `${option.count} réponse(s)` }),
+        );
+        return row;
+      }));
+      item.append(options, Object.assign(document.createElement("p"), { className: "quiz-responses-count", textContent: `Total : ${Number(summary.totalResponses || 0)} réponse(s)` }));
+    }
+    return item;
+  }));
+}
 
-  const validation = validateQuizConfiguration(quiz);
-  monitoredQuizId = quiz.id;
-  elements.quizResponsesQuestion.textContent = quiz.question;
-  if (!validation.valid) {
-    elements.quizResponsesOptions.replaceChildren(Object.assign(document.createElement("p"), { textContent: "La configuration de ce Quiz est incomplète." }));
-    elements.quizResponsesTotal.textContent = "Total : indisponible";
-    return;
-  }
-  const summary = await getOwnedQuizResponseSummary(activeSessionId, quiz.id);
-  if (viewMode === "monitoring" && monitoredQuizId === quiz.id) {
-    const responseRows = getQuizResponseRows(quiz, summary.counts);
-    elements.quizResponsesOptions.replaceChildren(...responseRows.map((option) => {
-      const item = document.createElement("div");
-      item.className = "quiz-response-option";
-      const identifier = document.createElement("strong");
-      identifier.textContent = option.id;
-      const label = document.createElement("span");
-      label.textContent = option.label;
-      const count = document.createElement("span");
-      count.textContent = `${option.count} réponse(s)`;
-      item.append(identifier, label, count);
-      return item;
-    }));
-    elements.quizResponsesTotal.textContent = `Total : ${Number(summary.totalResponses || 0)} réponse(s)`;
-  }
+async function refreshQuizMonitoring(force = false) {
+  if (viewMode !== "monitoring" || !presentationSession) return;
+  const entries = getQuizMonitoringEntries(state.slots, presentationSession.currentSlide, presentationSession.slotStartedElapsedMs);
+  const signature = entries.map(({ slot, status }) => `${slot.id}:${status}`).join("|");
+  monitoredQuizId = entries.find((entry) => entry.status === "active")?.slot.quiz.id || null;
+  if (!force && signature === quizMonitoringSignature) return;
+  quizMonitoringSignature = signature;
+  await Promise.all(entries
+    .filter((entry) => entry.status !== "upcoming" && validateQuizConfiguration(entry.slot.quiz).valid)
+    .map(async ({ slot }) => quizResponseSummaries.set(slot.quiz.id, await getOwnedQuizResponseSummary(activeSessionId, slot.quiz.id))));
+  if (signature === quizMonitoringSignature) renderQuizMonitoring(entries);
 }
 
 function syncPresentationSession() {
@@ -1661,9 +1680,8 @@ function renderPresentationMetrics() {
   )}`;
   elements.slotStatusText.textContent = slotStatus.label;
   const currentSlotIndex = slotTimings.findIndex((slot) => slot.id === currentSlot?.id);
-  const activeQuizId = currentSlot?.type === "quiz" ? currentSlot.quiz?.id : null;
-  if (viewMode === "monitoring" && activeQuizId !== monitoredQuizId) {
-    refreshQuizResponseSummary(currentSlot).catch((error) => console.error("Impossible de charger les réponses au quiz.", error));
+  if (viewMode === "monitoring") {
+    refreshQuizMonitoring().catch((error) => console.error("Impossible de charger les résultats des quiz.", error));
   }
   const nextSlot = currentSlotIndex >= 0 ? slotTimings[currentSlotIndex + 1] : null;
   elements.sideCurrentSlotName.textContent = currentSlot?.name ?? "Hors plan";
@@ -1898,6 +1916,9 @@ function leavePresentationMode() {
   stopQuizResponseEvents = null;
   sessionQuestions = [];
   selectedQuestionId = null;
+  quizResponseSummaries.clear();
+  quizMonitoringSignature = null;
+  monitoredQuizId = null;
   if (!isMonitoring) {
     localStorage.removeItem(LOCAL_SESSION_KEY);
   }

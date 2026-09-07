@@ -144,6 +144,33 @@ select {
   gap: 8px;
 }
 
+.quiz-monitoring-list {
+  display: grid;
+  gap: 12px;
+}
+
+.quiz-monitoring-item {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.quiz-monitoring-item.is-active {
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.quiz-monitoring-status {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.quiz-monitoring-item.is-active .quiz-monitoring-status {
+  color: var(--accent);
+}
+
 .quiz-response-option {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
