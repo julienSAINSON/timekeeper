@@ -10,9 +10,16 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./css/style.css?v=presentation-monitoring-v3" />
+    <link rel="stylesheet" href="./css/style.css?v=public-room-v2" />
   </head>
   <body>
+    <main id="publicRoomView" class="public-room-view" hidden aria-live="polite">
+      <section class="public-room-content" aria-labelledby="publicRoomStatus">
+        <p class="eyebrow">SAFe Timekeeper</p>
+        <h1 id="publicRoomStatus">Connexion à la session...</h1>
+        <p id="publicRoomDetail" class="lead">Vérification de votre lien de participation.</p>
+      </section>
+    </main>
     <section id="accessScreen" class="access-screen" aria-labelledby="accessTitle">
       <div class="access-card">
         <p class="eyebrow">SAFe Timekeeper</p>
@@ -340,6 +347,14 @@
                   </div>
                 </div>
               </div>
+              <section id="roomAccess" class="room-access" hidden aria-labelledby="roomAccessTitle">
+                <div>
+                  <p class="eyebrow">Room public</p>
+                  <h3 id="roomAccessTitle">Rejoindre la session</h3>
+                  <a id="roomLink" class="room-link" target="_blank" rel="noopener"></a>
+                </div>
+                <div id="roomQrCode" class="room-qr-code" aria-label="QR code pour rejoindre la session"></div>
+              </section>
               <div class="presentation-help">
                 Raccourcis: ← → Espace pour naviguer, <kbd>P</kbd> pause/reprise, <kbd>F</kbd> ou <kbd>F11</kbd> plein écran.
               </div>
@@ -374,6 +389,7 @@
       src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.10.111/pdf.min.js"
       data-pdfjs="true"
     ></script>
-    <script type="module" src="./js/app.js?v=realtime-monitoring-v1"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script type="module" src="./js/app.js?v=public-room-v2"></script>
   </body>
 </html>

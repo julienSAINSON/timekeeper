@@ -9,6 +9,13 @@ import {
 } from "../js/config.js?v=presentation-monitoring-v1";
 import { createSessionState } from "../js/session.js";
 import {
+  generateRoomToken,
+  getPublicRoomUrl,
+  getRoomPath,
+  getRoomTokenFromPath,
+  isRoomToken,
+} from "../js/room.js";
+import {
   formatClock,
   getCurrentSlot,
   getElapsedMs,
@@ -90,6 +97,23 @@ test("Initialise la nouvelle configuration avec l'heure locale actuelle", () => 
       localStorage.setItem(storageKey, previousState);
     }
   }
+});
+
+test("Génère des tokens de Room opaques et distincts", () => {
+  const firstToken = generateRoomToken();
+  const secondToken = generateRoomToken();
+  assert(isRoomToken(firstToken), "Le token généré doit être URL-safe et suffisamment long.");
+  assert(isRoomToken(secondToken), "Le second token généré doit être URL-safe et suffisamment long.");
+  assert(firstToken !== secondToken, "Deux sessions doivent recevoir des tokens de Room distincts.");
+});
+
+test("Construit et résout la route publique d'un Room", () => {
+  const roomToken = generateRoomToken();
+  equal(getRoomPath(roomToken), `/r/${roomToken}`);
+  const publicUrl = getPublicRoomUrl(roomToken, "https://timekeeper.example/app/index.html?view=monitoring");
+  equal(new URL(publicUrl).pathname, `/app/r/${roomToken}`);
+  equal(getRoomTokenFromPath(new URL(publicUrl).pathname), roomToken);
+  equal(getRoomTokenFromPath("/r/token-invalide"), null);
 });
 
 test("Calcule les heures de fin avec passage de minuit", () => {

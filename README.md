@@ -58,6 +58,14 @@ La session est réservée au compte propriétaire du projet. Les mises à jour u
 
 Le PDF reste volontairement dans la mémoire du navigateur et n'est jamais stocké dans la session ni transféré entre onglets. Après rechargement de l'onglet Présentation, réimportez le PDF pour retrouver son rendu ; l'état de session et la vue Monitoring sont, eux, restaurés depuis Supabase.
 
+## Room public
+
+Chaque session synchronisée crée un Room public distinct. Monitoring affiche son QR code et son URL sous la forme `/r/{roomToken}`. Le token est généré dans le navigateur avec `crypto.getRandomValues` sur 256 bits, encodé en Base64 URL-safe, et ne contient aucun identifiant de session ou de projet.
+
+Le lien ouvre une page mobile dédiée sans connexion, sans interface de configuration et sans contrôle de session. Une RPC publique résout exclusivement ce token exact et ne retourne que la disponibilité de la session et son état démarré/en attente. Les tables de Rooms et de sessions restent sans accès direct pour `anon`; toutes les écritures de session et de Room restent réservées au propriétaire authentifié.
+
+Pour GitHub Pages, [404.html](404.html) restaure un lien `/r/*` dans l'application après le fallback statique. Les autres hébergeurs doivent réécrire les chemins `/r/*` vers `index.html` ou servir cette même page 404. Le serveur local `jwebserver` ne fournit pas cette réécriture.
+
 ## Accès Google et bac à sable
 
 Au démarrage, Timekeeper propose un accès Google ou un accès sans compte au bac à sable. Les sessions Google sont persistées par Supabase : un utilisateur déjà connecté accède directement à l'application. Le bouton « Se déconnecter » ferme la session et revient à l'écran d'accès, où le bac à sable reste disponible.

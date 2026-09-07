@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SAFe Timekeeper</title>
+  </head>
+  <body>
+    <script>
+      const roomPathMatch = window.location.pathname.match(/^(.*)\/r\/[^/]+\/?$/);
+      if (roomPathMatch) {
+        sessionStorage.setItem("safe-timekeeper-public-room-path", window.location.pathname);
+        window.location.replace(`${roomPathMatch[1] || "/"}${window.location.search}`);
+      }
+    </script>
+  </body>
+</html>

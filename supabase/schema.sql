@@ -219,3 +219,77 @@ grant select on table public.tk_presentation_sessions to authenticated;
 grant execute on function public.create_presentation_session(uuid, uuid, jsonb) to authenticated;
 grant execute on function public.get_presentation_session(uuid) to authenticated;
 grant execute on function public.update_presentation_session(uuid, jsonb, bigint) to authenticated;
+
+create table if not exists public.tk_public_session_rooms (
+  room_token text primary key check (room_token ~ '^[A-Za-z0-9_-]{43}$'),
+  session_id uuid not null unique references public.tk_presentation_sessions(id) on delete cascade,
+  owner_user_id uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+alter table public.tk_public_session_rooms enable row level security;
+
+create or replace function public.create_public_session_room(
+  p_session_id uuid,
+  p_room_token text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'Authentification requise pour créer un Room.';
+  end if;
+
+  if p_room_token !~ '^[A-Za-z0-9_-]{43}$' then
+    raise exception 'Token de Room invalide.';
+  end if;
+
+  insert into public.tk_public_session_rooms (room_token, session_id, owner_user_id)
+  select p_room_token, session.id, auth.uid()
+  from public.tk_presentation_sessions session
+  where session.id = p_session_id and session.user_id = auth.uid();
+
+  if not found then
+    raise exception 'Session introuvable ou non autorisée.';
+  end if;
+
+  return jsonb_build_object('roomToken', p_room_token, 'sessionId', p_session_id);
+end;
+$$;
+
+create or replace function public.get_public_session_room(p_room_token text)
+returns jsonb
+language sql
+security definer
+set search_path = ''
+as $$
+  select jsonb_build_object(
+    'status', session.status,
+    'isRunning', coalesce((session.state ->> 'isRunning')::boolean, false)
+  )
+  from public.tk_public_session_rooms room
+  join public.tk_presentation_sessions session on session.id = room.session_id
+  where room.room_token = p_room_token;
+$$;
+
+create or replace function public.get_owned_public_session_room(p_session_id uuid)
+returns jsonb
+language sql
+security definer
+set search_path = ''
+as $$
+  select jsonb_build_object('roomToken', room.room_token)
+  from public.tk_public_session_rooms room
+  where room.session_id = p_session_id and room.owner_user_id = auth.uid();
+$$;
+
+revoke all on table public.tk_public_session_rooms from anon, authenticated;
+revoke all on function public.create_public_session_room(uuid, text) from public;
+revoke all on function public.get_public_session_room(text) from public;
+revoke all on function public.get_owned_public_session_room(uuid) from public;
+grant execute on function public.create_public_session_room(uuid, text) to authenticated;
+grant execute on function public.get_public_session_room(text) to anon, authenticated;
+grant execute on function public.get_owned_public_session_room(uuid) to authenticated;

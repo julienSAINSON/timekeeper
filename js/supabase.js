@@ -100,6 +100,21 @@ export function updatePresentationSession(sessionId, session, expectedVersion) {
   });
 }
 
+export function createPublicSessionRoom(sessionId, roomToken) {
+  return callRpc("create_public_session_room", {
+    p_session_id: sessionId,
+    p_room_token: roomToken,
+  });
+}
+
+export function loadPublicSessionRoom(roomToken) {
+  return callRpc("get_public_session_room", { p_room_token: roomToken });
+}
+
+export function loadOwnedPublicSessionRoom(sessionId) {
+  return callRpc("get_owned_public_session_room", { p_session_id: sessionId });
+}
+
 export function subscribeToPresentationSession(sessionId, onUpdate) {
   const realtimeClient = getSupabaseClient();
   const channel = realtimeClient

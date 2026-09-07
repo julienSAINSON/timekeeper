@@ -18,22 +18,30 @@ import {
   getSlotTiming,
 } from "./timer.js";
 import { createSessionState } from "./session.js";
+import {
+  generateRoomToken,
+  getPublicRoomUrl,
+  getRoomTokenFromPath,
+} from "./room.js";
 import { calculateSlotReductions } from "./overrun.js";
 import { renderTimeline } from "./timeline.js";
 import {
   createPresentationSession,
+  createPublicSessionRoom,
   createSharedPlenary,
   deleteSharedPlenary,
   forgetProject,
   getKnownProjects,
   loadPresentationSession,
+  loadOwnedPublicSessionRoom,
+  loadPublicSessionRoom,
   loadSharedPlenary,
   rememberProject,
   saveSharedPlenary,
   setAuthAccessToken,
   subscribeToPresentationSession,
   updatePresentationSession,
-} from "./supabase.js?v=access-v1";
+} from "./supabase.js?v=public-room-v1";
 import {
   getCurrentAccessToken,
   getCurrentUser,
@@ -44,10 +52,19 @@ import {
 } from "../auth/auth.js";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./supabaseConfig.js?v=access-v1";
 
+const ROOM_ROUTE_RESTORE_KEY = "safe-timekeeper-public-room-path";
+const restoredRoomPath = sessionStorage.getItem(ROOM_ROUTE_RESTORE_KEY);
+if (restoredRoomPath) {
+  sessionStorage.removeItem(ROOM_ROUTE_RESTORE_KEY);
+  window.history.replaceState({}, "", restoredRoomPath);
+}
+
 const state = loadState();
 const LOCAL_SESSION_KEY = "safe-timekeeper-active-session-v1";
+const publicRoomToken = getRoomTokenFromPath();
 let viewMode = new URLSearchParams(window.location.search).get("view") || "config";
 let activeSessionId = new URLSearchParams(window.location.search).get("sessionId") || null;
+let activeRoomToken = null;
 let sessionVersion = null;
 let stopSessionSubscription = null;
 let sessionWriteQueue = Promise.resolve();
@@ -217,6 +234,12 @@ const elements = {
   plannedStartLabel: document.querySelector("#plannedStartLabel"),
   plannedEndLabel: document.querySelector("#plannedEndLabel"),
   pdfPreviewState: document.querySelector("#pdfPreviewState"),
+  roomAccess: document.querySelector("#roomAccess"),
+  roomQrCode: document.querySelector("#roomQrCode"),
+  roomLink: document.querySelector("#roomLink"),
+  publicRoomView: document.querySelector("#publicRoomView"),
+  publicRoomStatus: document.querySelector("#publicRoomStatus"),
+  publicRoomDetail: document.querySelector("#publicRoomDetail"),
 };
 
 function showApplication(mode, user = null, accessToken = null) {
@@ -989,6 +1012,57 @@ function openMonitoringView(sessionId, monitoringWindow = null) {
   window.open(monitoringUrl.href, `timekeeper-monitoring-${crypto.randomUUID()}`);
 }
 
+function renderRoomAccess() {
+  const isVisible = viewMode === "monitoring" && Boolean(activeRoomToken);
+  elements.roomAccess.hidden = !isVisible;
+  if (!isVisible) {
+    return;
+  }
+
+  const roomUrl = getPublicRoomUrl(activeRoomToken);
+  elements.roomLink.href = roomUrl;
+  elements.roomLink.textContent = roomUrl;
+  elements.roomQrCode.dataset.roomUrl = roomUrl;
+  elements.roomQrCode.replaceChildren();
+  if (window.QRCode) {
+    new window.QRCode(elements.roomQrCode, {
+      text: roomUrl,
+      width: 176,
+      height: 176,
+      colorDark: "#003b5c",
+      colorLight: "#ffffff",
+      correctLevel: window.QRCode.CorrectLevel.M,
+    });
+  }
+}
+
+function showPublicRoomView() {
+  document.body.classList.add("is-public-room");
+  elements.accessScreen.hidden = true;
+  elements.appShell.hidden = true;
+  elements.publicRoomView.hidden = false;
+}
+
+async function loadPublicRoom(roomToken) {
+  showPublicRoomView();
+  try {
+    const room = await loadPublicSessionRoom(roomToken);
+    if (!room || room.status === "completed") {
+      elements.publicRoomStatus.textContent = "Cette session n'est plus disponible";
+      elements.publicRoomDetail.textContent = "Le lien est invalide ou la session est terminée.";
+      return;
+    }
+    elements.publicRoomStatus.textContent = "Vous êtes connecté";
+    elements.publicRoomDetail.textContent = room.isRunning
+      ? "La session est en cours. Restez sur cette page pour participer aux prochaines activités."
+      : "En attente du début de la session.";
+  } catch (error) {
+    console.error("Impossible de rejoindre le Room.", error);
+    elements.publicRoomStatus.textContent = "Cette session n'est plus disponible";
+    elements.publicRoomDetail.textContent = "Le lien est invalide ou la session est terminée.";
+  }
+}
+
 function applySessionRecord(record) {
   if (record.project) {
     Object.assign(state, normalizeState(record.project));
@@ -996,6 +1070,7 @@ function applySessionRecord(record) {
   presentationSession = record.state;
   activeSessionId = record.id;
   sessionVersion = Number(record.version);
+  renderRoomAccess();
   switchView(true);
   setPresentationDetailsCollapsed(viewMode === "presentation");
   renderPresentationMetrics();
@@ -1049,6 +1124,9 @@ async function joinPresentationSession(sessionId) {
     throw new Error("Cette session est introuvable ou vous n'y avez pas accès.");
   }
   applySessionRecord(record);
+  const room = await loadOwnedPublicSessionRoom(sessionId);
+  activeRoomToken = room?.roomToken || null;
+  renderRoomAccess();
   stopSessionSubscription?.();
   stopSessionSubscription = subscribeToPresentationSession(sessionId, (remoteSession) => {
     if (Number(remoteSession.version) <= sessionVersion) {
@@ -1456,6 +1534,8 @@ async function enterPresentationMode(overrunStrategy = "next") {
     const remoteSession = await createPresentationSession(state.remoteToken, presentationSession);
     activeSessionId = remoteSession.id;
     sessionVersion = Number(remoteSession.version);
+    activeRoomToken = generateRoomToken();
+    await createPublicSessionRoom(activeSessionId, activeRoomToken);
     const presentationUrl = new URL(window.location.href);
     presentationUrl.searchParams.set("view", "presentation");
     presentationUrl.searchParams.set("sessionId", activeSessionId);
@@ -1466,6 +1546,7 @@ async function enterPresentationMode(overrunStrategy = "next") {
         applySessionRecord(updatedSession);
       }
     });
+    renderRoomAccess();
   }
   syncPresentationSession();
   renderPresentationMetrics();
@@ -1480,6 +1561,7 @@ function leavePresentationMode() {
   stopSessionSubscription?.();
   stopSessionSubscription = null;
   activeSessionId = null;
+  activeRoomToken = null;
   sessionVersion = null;
   localStorage.removeItem(LOCAL_SESSION_KEY);
   switchView(false);
@@ -1890,6 +1972,11 @@ function attachEvents() {
 }
 
 async function bootstrap() {
+  if (publicRoomToken) {
+    await loadPublicRoom(publicRoomToken);
+    return;
+  }
+
   attachEvents();
   renderConfiguration();
   hasUnsavedChanges = false;
