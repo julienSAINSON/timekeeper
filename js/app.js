@@ -115,6 +115,7 @@ let sessionWriteQueue = Promise.resolve();
 let sessionQuestions = [];
 let selectedQuestionId = null;
 let publicParticipantQuestions = [];
+let editingPublicQuestionId = null;
 let tickHandle = null;
 let fullscreenProgressAnimationHandle = null;
 let currentPdfBuffer = null;
@@ -1256,38 +1257,65 @@ function renderPublicParticipantQuestions() {
   elements.publicQuestionsList.replaceChildren(...publicParticipantQuestions.map((question) => {
     const item = document.createElement("article");
     item.className = "public-question-item";
-    const form = document.createElement("form");
-    form.dataset.publicQuestionId = question.id;
-    const input = document.createElement("textarea");
-    input.name = "text";
-    input.maxLength = 500;
-    input.value = question.text;
-    input.disabled = question.status === "cancelled";
+    const summary = document.createElement("div");
+    summary.className = "public-question-summary";
+    const text = document.createElement("strong");
+    text.textContent = question.text;
     const status = document.createElement("p");
     status.className = "question-feedback";
     status.textContent = `Statut : ${getQuestionStatusLabel(question.status)}`;
     const actions = document.createElement("div");
-    actions.className = "question-actions";
-    const save = document.createElement("button");
-    save.className = "secondary-button";
-    save.type = "submit";
-    save.textContent = "Modifier";
-    save.disabled = question.status === "cancelled";
+    actions.className = "public-question-actions";
+    const edit = document.createElement("button");
+    edit.className = "public-question-icon-button";
+    edit.type = "button";
+    edit.dataset.editPublicQuestionId = question.id;
+    edit.setAttribute("aria-label", "Modifier la question");
+    edit.title = "Modifier la question";
+    edit.innerHTML = "&#9998;";
     const cancel = document.createElement("button");
-    cancel.className = "ghost-button";
+    cancel.className = "public-question-icon-button";
     cancel.type = "button";
     cancel.dataset.cancelPublicQuestionId = question.id;
-    cancel.textContent = "Annuler";
-    cancel.disabled = question.status === "cancelled";
-    actions.append(save, cancel);
-    form.append(input, status, actions);
-    item.append(form);
+    cancel.setAttribute("aria-label", "Supprimer la question");
+    cancel.title = "Supprimer la question";
+    cancel.innerHTML = "&#128465;";
+    const isCancelled = question.status === "cancelled";
+    edit.hidden = isCancelled;
+    cancel.hidden = isCancelled;
+    actions.append(edit, cancel);
+    summary.append(text, status, actions);
+    item.append(summary);
+
+    if (editingPublicQuestionId === question.id) {
+      const form = document.createElement("form");
+      form.className = "public-question-editor";
+      form.dataset.publicQuestionId = question.id;
+      const input = document.createElement("textarea");
+      input.name = "text";
+      input.maxLength = 500;
+      input.value = question.text;
+      const save = document.createElement("button");
+      save.className = "secondary-button";
+      save.type = "submit";
+      save.textContent = "Enregistrer";
+      const close = document.createElement("button");
+      close.className = "ghost-button";
+      close.type = "button";
+      close.dataset.closePublicQuestionEditor = question.id;
+      close.textContent = "Annuler";
+      form.append(input, save, close);
+      item.append(form);
+    }
     return item;
   }));
 }
 
 async function refreshPublicParticipantQuestions() {
   publicParticipantQuestions = await loadPublicParticipantQuestions(publicRoomToken, getParticipantId()) || [];
+  if (!publicParticipantQuestions.some((question) => question.id === editingPublicQuestionId)) {
+    editingPublicQuestionId = null;
+  }
   renderPublicParticipantQuestions();
 }
 
@@ -1406,6 +1434,7 @@ async function updatePublicQuestion(event) {
   if (!result.valid) return;
   try {
     await updatePublicParticipantQuestion(publicRoomToken, getParticipantId(), form.dataset.publicQuestionId, result.text);
+    editingPublicQuestionId = null;
     await refreshPublicParticipantQuestions();
   } catch (error) {
     console.error("Impossible de modifier la question.", error);
@@ -2499,6 +2528,19 @@ function attachEvents() {
   elements.publicQuestionForm.addEventListener("submit", submitPublicQuestion);
   elements.publicQuestionsList.addEventListener("submit", updatePublicQuestion);
   elements.publicQuestionsList.addEventListener("click", (event) => {
+    const editQuestionId = event.target.closest("[data-edit-public-question-id]")?.dataset.editPublicQuestionId;
+    if (editQuestionId) {
+      editingPublicQuestionId = editQuestionId;
+      renderPublicParticipantQuestions();
+      elements.publicQuestionsList.querySelector("textarea")?.focus();
+      return;
+    }
+    const closeQuestionId = event.target.closest("[data-close-public-question-editor]")?.dataset.closePublicQuestionEditor;
+    if (closeQuestionId) {
+      editingPublicQuestionId = null;
+      renderPublicParticipantQuestions();
+      return;
+    }
     const questionId = event.target.closest("[data-cancel-public-question-id]")?.dataset.cancelPublicQuestionId;
     if (questionId) cancelPublicQuestion(questionId);
   });

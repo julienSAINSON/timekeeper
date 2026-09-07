@@ -124,7 +124,7 @@ select:focus-visible {
 
 .public-questions,
 .public-questions-list,
-.public-question-item form {
+.public-question-editor {
   display: grid;
   gap: 12px;
 }
@@ -138,13 +138,57 @@ select:focus-visible {
 }
 
 .public-question-item {
-  padding: 12px;
+  padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--panel-soft);
 }
 
-.public-question-item textarea {
+.public-question-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  align-items: start;
+}
+
+.public-question-summary strong {
+  overflow-wrap: anywhere;
+}
+
+.public-question-summary .question-feedback {
+  grid-column: 1 / 2;
+}
+
+.public-question-actions {
+  display: flex;
+  gap: 6px;
+  grid-column: 2;
+  grid-row: 1 / 3;
+}
+
+.public-question-icon-button {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--text);
+  font-size: 1.15rem;
+  cursor: pointer;
+}
+
+.public-question-icon-button:hover {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.public-question-editor {
+  margin-top: 12px;
+}
+
+.public-question-editor textarea {
   min-height: 84px;
   resize: vertical;
   border: 1px solid var(--line);
