@@ -1,6 +1,10 @@
 export const QUIZ_OPTION_MIN = 2;
 export const QUIZ_OPTION_MAX = 4;
 export const QUIZ_OPTION_IDS = ["A", "B", "C", "D"];
+export const QUIZ_COMPREHENSION_THRESHOLDS = {
+  good: 0.75,
+  mixed: 0.5,
+};
 
 export function createQuizConfiguration() {
   return {
@@ -76,6 +80,26 @@ export function getQuizResponseRows(quiz, counts) {
       label: option.label,
       count: Math.max(0, Number.parseInt(counts?.[option.id], 10) || 0),
     }));
+}
+
+export function classifyQuizComprehension(correctRate) {
+  if (correctRate === null || correctRate === undefined) return null;
+  if (correctRate >= QUIZ_COMPREHENSION_THRESHOLDS.good) return "good";
+  if (correctRate >= QUIZ_COMPREHENSION_THRESHOLDS.mixed) return "mixed";
+  return "poor";
+}
+
+export function getQuizComprehensionSignal(quiz, summary) {
+  const totalResponses = Math.max(0, Number.parseInt(summary?.totalResponses, 10) || 0);
+  if (!totalResponses) return { totalResponses: 0, correctResponses: 0, correctRate: null, classification: null };
+  const correctResponses = Math.max(0, Number.parseInt(summary?.counts?.[quiz?.correctOptionId], 10) || 0);
+  const correctRate = correctResponses / totalResponses;
+  return {
+    totalResponses,
+    correctResponses,
+    correctRate,
+    classification: classifyQuizComprehension(correctRate),
+  };
 }
 
 export function getQuizMonitoringEntries(slots, currentSlide, slotStartedElapsedMs) {

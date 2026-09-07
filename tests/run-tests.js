@@ -22,7 +22,9 @@ import {
   validateQuestionText,
 } from "../js/questions.js";
 import {
+  classifyQuizComprehension,
   createQuizConfiguration,
+  getQuizComprehensionSignal,
   getParticipantId,
   getQuizMonitoringEntries,
   getQuizResponseRows,
@@ -30,7 +32,7 @@ import {
   normalizePublicQuizActivity,
   validateQuizConfiguration,
   validateQuizDraft,
-} from "../js/quiz.js?v=quiz-monitoring-realtime-v1";
+} from "../js/quiz.js?v=quiz-comprehension-signals-v1";
 import {
   formatClock,
   getCurrentSlot,
@@ -229,6 +231,40 @@ test("Prépare les compteurs agrégés pour les quatre propositions", () => {
   equal(rows.length, 4);
   equal(rows.reduce((total, row) => total + row.count, 0), 42);
   assert(rows.every((row) => !Object.hasOwn(row, "participant_id")));
+});
+
+test("Classe le niveau de compréhension aux seuils définis", () => {
+  equal(classifyQuizComprehension(null), null);
+  equal(classifyQuizComprehension(0.49), "poor");
+  equal(classifyQuizComprehension(0.5), "mixed");
+  equal(classifyQuizComprehension(0.74), "mixed");
+  equal(classifyQuizComprehension(0.75), "good");
+  equal(classifyQuizComprehension(1), "good");
+});
+
+test("Calcule un signal Quiz sans réponse ni donnée persistée", () => {
+  const quiz = createQuizConfiguration();
+  quiz.correctOptionId = "B";
+  const signal = getQuizComprehensionSignal(quiz, { totalResponses: 0, counts: {} });
+  equal(signal.totalResponses, 0);
+  equal(signal.correctRate, null);
+  equal(signal.classification, null);
+  assert(!Object.hasOwn(signal, "correctOptionId"));
+  assert(!Object.hasOwn(signal, "participant_id"));
+});
+
+test("Calcule des signaux indépendants pour plusieurs Quiz", () => {
+  const firstQuiz = createQuizConfiguration();
+  firstQuiz.correctOptionId = "A";
+  const secondQuiz = createQuizConfiguration();
+  secondQuiz.correctOptionId = "B";
+  const firstSignal = getQuizComprehensionSignal(firstQuiz, { totalResponses: 4, counts: { A: 3, B: 1 } });
+  const secondSignal = getQuizComprehensionSignal(secondQuiz, { totalResponses: 5, counts: { A: 4, B: 1 } });
+  equal(firstSignal.correctResponses, 3);
+  equal(firstSignal.correctRate, 0.75);
+  equal(firstSignal.classification, "good");
+  equal(secondSignal.correctResponses, 1);
+  equal(secondSignal.classification, "poor");
 });
 
 test("Conserve les Quiz rencontrés dans l'ordre de la timeline", () => {

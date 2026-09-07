@@ -171,6 +171,25 @@ select {
   color: var(--accent);
 }
 
+.quiz-comprehension-empty,
+.quiz-comprehension-signal {
+  margin: 0;
+  font-weight: 700;
+}
+
+.quiz-comprehension-empty {
+  color: var(--muted);
+}
+
+.quiz-comprehension-signal.is-good {
+  color: #287641;
+}
+
+.quiz-comprehension-signal.is-mixed,
+.quiz-comprehension-signal.is-poor {
+  color: #a65400;
+}
+
 .quiz-response-option {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;

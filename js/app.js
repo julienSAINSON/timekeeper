@@ -31,6 +31,7 @@ import {
 } from "./questions.js";
 import {
   createQuizConfiguration,
+  getQuizComprehensionSignal,
   getParticipantId,
   getQuizMonitoringEntries,
   getQuizResponseRows,
@@ -1445,6 +1446,7 @@ function renderQuizMonitoring(entries) {
       item.append(Object.assign(document.createElement("p"), { className: "quiz-responses-count", textContent: "Résultats disponibles après activation." }));
     } else {
       const summary = quizResponseSummaries.get(slot.quiz.id) || { counts: {}, totalResponses: 0 };
+      const comprehension = getQuizComprehensionSignal(slot.quiz, summary);
       const options = document.createElement("div");
       options.className = "quiz-responses-options";
       options.replaceChildren(...getQuizResponseRows(slot.quiz, summary.counts).map((option) => {
@@ -1457,7 +1459,24 @@ function renderQuizMonitoring(entries) {
         );
         return row;
       }));
-      item.append(options, Object.assign(document.createElement("p"), { className: "quiz-responses-count", textContent: `Total : ${Number(summary.totalResponses || 0)} réponse(s)` }));
+      const total = document.createElement("p");
+      total.className = "quiz-responses-count";
+      total.textContent = `Total : ${comprehension.totalResponses} réponse(s)`;
+      item.append(options, total);
+      if (!comprehension.classification) {
+        item.append(Object.assign(document.createElement("p"), { className: "quiz-comprehension-empty", textContent: "Aucune réponse." }));
+      } else {
+        const signal = document.createElement("p");
+        signal.className = `quiz-comprehension-signal is-${comprehension.classification}`;
+        const rate = Math.round(comprehension.correctRate * 100);
+        const label = comprehension.classification === "good"
+          ? "✓ Bonne compréhension"
+          : comprehension.classification === "mixed"
+            ? "⚠ Compréhension à surveiller"
+            : "⚠ Compréhension insuffisante";
+        signal.textContent = `${comprehension.correctResponses} bonne(s) réponse(s) · ${rate} % · ${label}`;
+        item.append(signal);
+      }
     }
     return item;
   }));
