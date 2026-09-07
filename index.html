@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./css/style.css?v=quiz-project-config-v1" />
+    <link rel="stylesheet" href="./css/style.css?v=quiz-participant-v1" />
   </head>
   <body>
     <main id="publicRoomView" class="public-room-view" hidden aria-live="polite">
@@ -24,6 +24,15 @@
           <button id="publicQuestionSubmit" class="primary-button" type="submit">Envoyer</button>
           <p id="publicQuestionFeedback" class="question-feedback" aria-live="polite"></p>
         </form>
+        <section id="publicQuiz" class="public-quiz" hidden aria-labelledby="publicQuizQuestion">
+          <p class="eyebrow">Quiz</p>
+          <h2 id="publicQuizQuestion"></h2>
+          <form id="publicQuizForm">
+            <div id="publicQuizOptions" class="quiz-options"></div>
+            <button id="publicQuizSubmit" class="primary-button" type="submit" disabled>Répondre</button>
+            <p id="publicQuizFeedback" class="question-feedback" aria-live="polite"></p>
+          </form>
+        </section>
       </section>
     </main>
     <section id="accessScreen" class="access-screen" aria-labelledby="accessTitle">
@@ -412,6 +421,6 @@
       data-pdfjs="true"
     ></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <script type="module" src="./js/app.js?v=quiz-project-config-v1"></script>
+    <script type="module" src="./js/app.js?v=quiz-participant-v1"></script>
   </body>
 </html>

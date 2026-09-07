@@ -25,6 +25,7 @@ import {
   createQuizConfiguration,
   getParticipantId,
   normalizeQuizConfiguration,
+  normalizePublicQuizActivity,
   validateQuizConfiguration,
   validateQuizDraft,
 } from "../js/quiz.js?v=quiz-project-config-v1";
@@ -184,6 +185,24 @@ test("Initialise et valide la configuration d'un Quiz de projet", () => {
   assert(validateQuizConfiguration(quiz).valid);
   quiz.options[3].label = "";
   assert(!validateQuizConfiguration(quiz).valid, "La bonne réponse doit désigner une proposition renseignée.");
+});
+
+test("Le DTO public du Quiz ne conserve aucune donnée de correction", () => {
+  const publicQuiz = normalizePublicQuizActivity({
+    quiz: {
+      id: "quiz-id",
+      question: "Question publique",
+      options: [{ id: "A", label: "Une" }, { id: "B", label: "Deux" }],
+      hasResponded: true,
+      correctOptionId: "B",
+      sessionId: "session-secrète",
+    },
+  });
+  equal(publicQuiz.question, "Question publique");
+  equal(publicQuiz.options.length, 2);
+  equal(publicQuiz.hasResponded, true);
+  assert(!Object.hasOwn(publicQuiz, "correctOptionId"));
+  assert(!Object.hasOwn(publicQuiz, "sessionId"));
 });
 
 test("Préserve l'identifiant et les options du Quiz lors de la persistence locale", () => {

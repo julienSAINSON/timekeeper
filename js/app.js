@@ -29,7 +29,12 @@ import {
   isQuestionStatus,
   validateQuestionText,
 } from "./questions.js";
-import { createQuizConfiguration, validateQuizConfiguration } from "./quiz.js";
+import {
+  createQuizConfiguration,
+  getParticipantId,
+  normalizePublicQuizActivity,
+  validateQuizConfiguration,
+} from "./quiz.js";
 import { calculateSlotReductions } from "./overrun.js";
 import { renderTimeline } from "./timeline.js";
 import {
@@ -44,15 +49,19 @@ import {
   loadOwnedSessionQuestions,
   loadOwnedPublicSessionRoom,
   loadPublicSessionRoom,
+  getPublicRoomActivity,
   loadSharedPlenary,
   rememberProject,
   saveSharedPlenary,
   setAuthAccessToken,
   subscribeToPresentationSession,
+  subscribeToPublicRoomActivity,
   subscribeToSessionQuestions,
+  submitPublicQuizResponse,
+  publishPublicRoomActivity,
   updateOwnedSessionQuestionStatus,
   updatePresentationSession,
-} from "./supabase.js?v=quiz-responses-session-v1";
+} from "./supabase.js?v=quiz-participant-v1";
 import {
   getCurrentAccessToken,
   getCurrentUser,
@@ -79,6 +88,9 @@ let activeRoomToken = null;
 let sessionVersion = null;
 let stopSessionSubscription = null;
 let stopQuestionsSubscription = null;
+let stopPublicRoomActivity = null;
+let publicQuiz = null;
+let publicQuizSelection = null;
 let sessionWriteQueue = Promise.resolve();
 let sessionQuestions = [];
 let selectedQuestionId = null;
@@ -258,6 +270,12 @@ const elements = {
   publicQuestionInput: document.querySelector("#publicQuestionInput"),
   publicQuestionSubmit: document.querySelector("#publicQuestionSubmit"),
   publicQuestionFeedback: document.querySelector("#publicQuestionFeedback"),
+  publicQuiz: document.querySelector("#publicQuiz"),
+  publicQuizForm: document.querySelector("#publicQuizForm"),
+  publicQuizQuestion: document.querySelector("#publicQuizQuestion"),
+  publicQuizOptions: document.querySelector("#publicQuizOptions"),
+  publicQuizSubmit: document.querySelector("#publicQuizSubmit"),
+  publicQuizFeedback: document.querySelector("#publicQuizFeedback"),
   questionsPanel: document.querySelector("#questionsPanel"),
   questionsList: document.querySelector("#questionsList"),
   selectedQuestion: document.querySelector("#selectedQuestion"),
@@ -1142,10 +1160,76 @@ async function loadPublicRoom(roomToken) {
     elements.publicRoomDetail.textContent = room.isRunning
       ? "La session est en cours. Restez sur cette page pour participer aux prochaines activités."
       : "En attente du début de la session.";
+    initAuth({ supabaseUrl: SUPABASE_URL, supabaseAnonKey: SUPABASE_ANON_KEY });
+    stopPublicRoomActivity?.();
+    stopPublicRoomActivity = subscribeToPublicRoomActivity(roomToken, () => {
+      refreshPublicRoomActivity().catch((error) => console.error("Impossible d'actualiser l'activité du Room.", error));
+    });
+    await refreshPublicRoomActivity();
   } catch (error) {
     console.error("Impossible de rejoindre le Room.", error);
     elements.publicRoomStatus.textContent = "Cette session n'est plus disponible";
     elements.publicRoomDetail.textContent = "Le lien est invalide ou la session est terminée.";
+  }
+}
+
+function renderPublicQuiz(activity) {
+  const quiz = normalizePublicQuizActivity(activity);
+  const selectedOptionId = publicQuiz?.id === quiz?.id ? publicQuizSelection : null;
+  publicQuiz = quiz;
+  publicQuizSelection = selectedOptionId;
+  elements.publicQuiz.hidden = !quiz;
+  elements.publicQuestionForm.hidden = Boolean(quiz);
+  if (!quiz) {
+    elements.publicQuizOptions.replaceChildren();
+    elements.publicQuizFeedback.textContent = "";
+    return;
+  }
+
+  elements.publicQuizQuestion.textContent = quiz.question;
+  elements.publicQuizOptions.replaceChildren(...quiz.options.map((option) => {
+    const label = document.createElement("label");
+    label.className = "quiz-option";
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = "quizOption";
+    input.value = option.id;
+    input.checked = option.id === selectedOptionId;
+    input.disabled = quiz.hasResponded;
+    label.append(input, document.createTextNode(option.label));
+    return label;
+  }));
+  elements.publicQuizSubmit.disabled = quiz.hasResponded || !selectedOptionId;
+  elements.publicQuizFeedback.textContent = quiz.hasResponded ? "Réponse enregistrée ✓" : "";
+}
+
+async function refreshPublicRoomActivity() {
+  const activity = await getPublicRoomActivity(publicRoomToken, getParticipantId());
+  renderPublicQuiz(activity);
+}
+
+async function submitPublicQuiz(event) {
+  event.preventDefault();
+  const selected = elements.publicQuizOptions.querySelector("input:checked");
+  if (!selected || !publicQuiz) return;
+
+  elements.publicQuizSubmit.disabled = true;
+  elements.publicQuizFeedback.textContent = "";
+  try {
+    await submitPublicQuizResponse(publicRoomToken, getParticipantId(), selected.value);
+    elements.publicQuizOptions.querySelectorAll("input").forEach((input) => { input.disabled = true; });
+    elements.publicQuizFeedback.textContent = "Réponse enregistrée ✓";
+  } catch (error) {
+    console.error("Impossible d'enregistrer la réponse au quiz.", error);
+    try {
+      await refreshPublicRoomActivity();
+    } catch (refreshError) {
+      console.error("Impossible de vérifier l'état de la réponse au quiz.", refreshError);
+    }
+    if (!publicQuiz?.hasResponded) {
+      elements.publicQuizSubmit.disabled = false;
+      elements.publicQuizFeedback.textContent = "Impossible d'enregistrer la réponse. Réessayez.";
+    }
   }
 }
 
@@ -1338,7 +1422,7 @@ function syncPresentationSession() {
         sessionVersion = Number(savedSession.version);
         presentationSession.version = sessionVersion;
       }
-      publishPublicRoomActivity(activeRoomToken);
+      await publishPublicRoomActivity(activeRoomToken);
     } catch (error) {
       console.error("Impossible de synchroniser la session.", error);
       const latestSession = await loadPresentationSession(sessionId);
@@ -2073,6 +2157,12 @@ function attachEvents() {
   elements.exportReportBtn.addEventListener("click", exportPresentationReport);
   elements.exitPresentationBtn.addEventListener("click", leavePresentationMode);
   elements.publicQuestionForm.addEventListener("submit", submitPublicQuestion);
+  elements.publicQuizForm.addEventListener("submit", submitPublicQuiz);
+  elements.publicQuizOptions.addEventListener("change", () => {
+    const selected = elements.publicQuizOptions.querySelector("input:checked");
+    publicQuizSelection = selected?.value || null;
+    elements.publicQuizSubmit.disabled = !publicQuizSelection;
+  });
   elements.questionsList.addEventListener("click", (event) => {
       const questionButton = event.target.closest("[data-question-id]");
       if (!questionButton) {

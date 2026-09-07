@@ -53,6 +53,19 @@ export function validateQuizConfiguration(rawQuiz) {
   return { valid: true, quiz: { ...quiz, question, options }, error: "" };
 }
 
+export function normalizePublicQuizActivity(activity) {
+  const quiz = activity?.quiz;
+  if (!quiz || typeof quiz !== "object" || typeof quiz.id !== "string" || !quiz.id || typeof quiz.question !== "string" || !Array.isArray(quiz.options)) {
+    return null;
+  }
+  const options = quiz.options
+    .filter((option) => QUIZ_OPTION_IDS.includes(option?.id) && typeof option.label === "string" && option.label.trim())
+    .map((option) => ({ id: option.id, label: option.label }));
+  return options.length >= QUIZ_OPTION_MIN && options.length <= QUIZ_OPTION_MAX
+    ? { id: quiz.id, question: quiz.question, options, hasResponded: quiz.hasResponded === true }
+    : null;
+}
+
 export function normalizeQuizDraft(question, optionLabels) {
   const cleanQuestion = String(question || "").trim();
   const options = optionLabels.map((label, index) => ({

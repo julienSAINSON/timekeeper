@@ -95,6 +95,37 @@ select {
   font-weight: 600;
 }
 
+.public-quiz,
+.quiz-options,
+#publicQuizForm {
+  display: grid;
+  gap: 12px;
+}
+
+.public-quiz {
+  margin-top: 28px;
+}
+
+.public-quiz h2 {
+  margin: 0;
+  font-size: 1.45rem;
+}
+
+.quiz-option {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+  background: #ffffff;
+  font-weight: 600;
+}
+
+.quiz-option input {
+  margin-top: 3px;
+}
+
 .access-screen {
   position: fixed;
   z-index: 2000;

@@ -507,7 +507,7 @@ begin
     and slot->>'type' = 'quiz'
     and (session.state->>'currentSlide')::integer between (slot->>'startSlide')::integer and (slot->>'endSlide')::integer
     and public.is_valid_project_quiz(slot->'quiz')
-    and exists (select 1 from jsonb_array_elements(slot->'quiz'->'options') option where option->>'id' = p_option_id and char_length(btrim(coalesce(option->>'label', ''))) > 0)
+    and exists (select 1 from jsonb_array_elements(slot->'quiz'->'options') option where option->>'id' = p_option_id and char_length(btrim(coalesce(option->>'label', ''))) > 0);
 
   if not found then
     raise exception 'Quiz indisponible.';
