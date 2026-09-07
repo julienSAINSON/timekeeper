@@ -7,7 +7,7 @@ import {
   validatePlenary,
   validateSlots,
 } from "../js/config.js?v=quiz-project-config-v1";
-import { createSessionState } from "../js/session.js";
+import { createSessionState, normalizeSessionState } from "../js/session.js?v=optional-slot-recovery-v1";
 import {
   generateRoomToken,
   getPublicRoomUrl,
@@ -37,11 +37,14 @@ import {
   formatClock,
   getCurrentSlot,
   getElapsedMs,
+  getFutureOptionalSlots,
+  getNextAvailableSlide,
   getPlannedElapsedMs,
+  getRecoverySummary,
   getSessionDelayMs,
   getSlotStatus,
   getSlotTiming,
-} from "../js/timer.js?v=session-delay-v1";
+} from "../js/timer.js?v=optional-slot-recovery-v1";
 import { calculateSlotReductions } from "../js/overrun.js";
 import { renderTimeline } from "../js/timeline.js";
 
@@ -363,7 +366,13 @@ test("Crée un état de session isolé pour chaque présentation", () => {
   equal(secondSession.currentSlotId, undefined);
   equal(firstSession.status, "active");
   equal(firstSession.version, 1);
+  equal(firstSession.skippedSlotIds.length, 0);
   assert(firstSession.id !== secondSession.id, "Chaque session doit posséder un identifiant distinct.");
+});
+
+test("Normalise les créneaux ignorés pour les sessions existantes", () => {
+  equal(normalizeSessionState({ id: "legacy" }).skippedSlotIds.length, 0);
+  equal(normalizeSessionState({ skippedSlotIds: ["a", "a", 3, "b"] }).skippedSlotIds.join(","), "a,b");
 });
 
 test("Le calcul du timer conserve le comportement de pause avec la session", () => {
@@ -514,6 +523,40 @@ test("Dérive le retard ou l'avance depuis la position de slide", () => {
   assert(earlyDelay >= -60100 && earlyDelay <= -59900, `Avance attendue proche de 60 s, obtenue ${earlyDelay}.`);
   equal(getPlannedElapsedMs(timings, 1), 0);
   equal(getPlannedElapsedMs(timings, 2), 300000);
+});
+
+test("Propose uniquement les créneaux optionnels futurs non ignorés", () => {
+  const slots = [
+    { ...slot("past", 1, 1, 2), optional: true },
+    { ...slot("current", 2, 2, 3), optional: true },
+    { ...slot("required", 3, 3, 4), optional: false },
+    { ...slot("available", 4, 5, 5), optional: true },
+    { ...slot("skipped", 6, 6, 1), optional: true },
+  ];
+  const future = getFutureOptionalSlots(slots, 2, ["skipped"]);
+  equal(future.map((item) => item.id).join(","), "available");
+  equal(getFutureOptionalSlots(slots, 2, []).map((item) => item.id).join(","), "available,skipped");
+});
+
+test("Calcule la récupération sélectionnée sans modifier les créneaux", () => {
+  const first = { ...slot("first", 3, 3, 3), optional: true };
+  const second = { ...slot("second", 4, 4, 2), optional: true };
+  const recovery = getRecoverySummary(240000, [first, second]);
+  equal(recovery.recoveryMs, 300000);
+  equal(recovery.remainingDelayMs, 0);
+  equal(first.durationMinutes, 3);
+  equal(second.durationMinutes, 2);
+});
+
+test("La navigation évite les plages de créneaux ignorés", () => {
+  const slots = [
+    { ...slot("first", 1, 1, 1), optional: false },
+    { ...slot("skip", 2, 3, 2), optional: true },
+    { ...slot("last", 4, 4, 1), optional: false },
+  ];
+  equal(getNextAvailableSlide(slots, 1, 4, ["skip"]), 4);
+  equal(getNextAvailableSlide(slots, 4, 4, ["skip"], -1), 1);
+  equal(getNextAvailableSlide(slots, 1, 4, []), 2);
 });
 
 test("Fige le retard pendant la pause et le reprend ensuite", () => {

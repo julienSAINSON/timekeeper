@@ -15,6 +15,16 @@ export function createSessionState(firstSlide = 1) {
     slotOverrunsMs: {},
     slotReductionsMs: {},
     slotStartedElapsedMs: {},
+    skippedSlotIds: [],
     overrunStrategy: "next",
+  };
+}
+
+export function normalizeSessionState(rawSession) {
+  return {
+    ...rawSession,
+    skippedSlotIds: Array.isArray(rawSession?.skippedSlotIds)
+      ? [...new Set(rawSession.skippedSlotIds.filter((slotId) => typeof slotId === "string"))]
+      : [],
   };
 }

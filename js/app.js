@@ -14,11 +14,14 @@ import {
   formatHour,
   getCurrentSlot,
   getElapsedMs,
+  getFutureOptionalSlots,
+  getNextAvailableSlide,
+  getRecoverySummary,
   getSessionDelayMs,
   getSlotStatus,
   getSlotTiming,
-} from "./timer.js?v=session-delay-v1";
-import { createSessionState } from "./session.js";
+} from "./timer.js?v=optional-slot-recovery-v1";
+import { createSessionState, normalizeSessionState } from "./session.js?v=optional-slot-recovery-v1";
 import {
   generateRoomToken,
   getPublicRoomUrl,
@@ -101,6 +104,8 @@ let publicQuizSelection = null;
 let monitoredQuizId = null;
 let quizMonitoringSignature = null;
 const quizResponseSummaries = new Map();
+const selectedRecoverySlotIds = new Set();
+let dismissedRecoverySlide = null;
 let sessionWriteQueue = Promise.resolve();
 let sessionQuestions = [];
 let selectedQuestionId = null;
@@ -276,6 +281,12 @@ const elements = {
   roomAccess: document.querySelector("#roomAccess"),
   roomQrCode: document.querySelector("#roomQrCode"),
   roomLink: document.querySelector("#roomLink"),
+  recoveryPanel: document.querySelector("#recoveryPanel"),
+  recoveryDelay: document.querySelector("#recoveryDelay"),
+  recoverySlots: document.querySelector("#recoverySlots"),
+  recoverySummary: document.querySelector("#recoverySummary"),
+  keepRecoveryPlanBtn: document.querySelector("#keepRecoveryPlanBtn"),
+  skipRecoverySlotsBtn: document.querySelector("#skipRecoverySlotsBtn"),
   publicRoomView: document.querySelector("#publicRoomView"),
   publicRoomStatus: document.querySelector("#publicRoomStatus"),
   publicRoomDetail: document.querySelector("#publicRoomDetail"),
@@ -1354,7 +1365,7 @@ function applySessionRecord(record) {
   if (record.project) {
     Object.assign(state, normalizeState(record.project));
   }
-  presentationSession = record.state;
+  presentationSession = normalizeSessionState(record.state);
   activeSessionId = record.id;
   sessionVersion = Number(record.version);
   renderRoomAccess();
@@ -1375,7 +1386,7 @@ function applyLocalSessionRecord(record) {
   if (record.project) {
     Object.assign(state, normalizeState(record.project));
   }
-  presentationSession = record.session;
+  presentationSession = normalizeSessionState(record.session);
   switchView(true);
   setPresentationDetailsCollapsed(viewMode === "presentation");
   renderPresentationMetrics();
@@ -1415,6 +1426,8 @@ async function joinPresentationSession(sessionId) {
   quizResponseSummaries.clear();
   quizMonitoringSignature = null;
   monitoredQuizId = null;
+  selectedRecoverySlotIds.clear();
+  dismissedRecoverySlide = null;
   const room = await loadOwnedPublicSessionRoom(sessionId);
   activeRoomToken = room?.roomToken || null;
   stopQuizResponseEvents?.();
@@ -1491,6 +1504,85 @@ function renderQuizMonitoring(entries) {
     }
     return item;
   }));
+}
+
+function renderRecoveryProposal(delayMs) {
+  const futureOptionalSlots = getFutureOptionalSlots(
+    state.slots,
+    presentationSession.currentSlide,
+    presentationSession.skippedSlotIds,
+  );
+  const isVisible = viewMode === "monitoring"
+    && delayMs > 0
+    && futureOptionalSlots.length > 0
+    && dismissedRecoverySlide !== presentationSession.currentSlide;
+  elements.recoveryPanel.hidden = !isVisible;
+  if (!isVisible) return;
+
+  const availableSlotIds = new Set(futureOptionalSlots.map((slot) => slot.id));
+  selectedRecoverySlotIds.forEach((slotId) => {
+    if (!availableSlotIds.has(slotId)) selectedRecoverySlotIds.delete(slotId);
+  });
+  const selectedSlots = futureOptionalSlots.filter((slot) => selectedRecoverySlotIds.has(slot.id));
+  const recovery = getRecoverySummary(delayMs, selectedSlots);
+  elements.recoveryDelay.textContent = `Retard actuel : +${formatClock(delayMs)}`;
+  elements.recoverySlots.replaceChildren(...futureOptionalSlots.map((slot) => {
+    const label = document.createElement("label");
+    label.className = "recovery-slot";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.value = slot.id;
+    input.checked = selectedRecoverySlotIds.has(slot.id);
+    const name = document.createElement("strong");
+    name.textContent = slot.name;
+    const details = document.createElement("small");
+    details.textContent = `${slot.type} · ${slot.durationMinutes} min`;
+    label.append(input, name, details);
+    return label;
+  }));
+  elements.recoverySummary.textContent = `Récupération : ${formatClock(recovery.recoveryMs)} · Retard restant : ${formatClock(recovery.remainingDelayMs)}`;
+  elements.skipRecoverySlotsBtn.disabled = selectedSlots.length === 0;
+}
+
+function keepRecoveryPlan() {
+  selectedRecoverySlotIds.clear();
+  dismissedRecoverySlide = presentationSession?.currentSlide ?? null;
+  renderPresentationMetrics();
+}
+
+function skipSelectedRecoverySlots() {
+  const slotTimings = getSlotTiming(state.slots, presentationSession.slotReductionsMs);
+  const selectableSlots = getFutureOptionalSlots(
+    state.slots,
+    presentationSession.currentSlide,
+    presentationSession.skippedSlotIds,
+  );
+  const selectedSlots = selectableSlots.filter((slot) => selectedRecoverySlotIds.has(slot.id));
+  if (!selectedSlots.length) return;
+
+  presentationSession.skippedSlotIds = [...new Set([
+    ...presentationSession.skippedSlotIds,
+    ...selectedSlots.map((slot) => slot.id),
+  ])];
+  selectedRecoverySlotIds.clear();
+  dismissedRecoverySlide = null;
+  const nextSlide = getNextAvailableSlide(
+    slotTimings,
+    presentationSession.currentSlide,
+    state.pageCount,
+    presentationSession.skippedSlotIds,
+  );
+  if (nextSlide !== presentationSession.currentSlide) {
+    captureCompletedSlotDebt(presentationSession.currentSlide, nextSlide);
+    presentationSession.currentSlide = nextSlide;
+    const nextSlot = getCurrentSlot(slotTimings, nextSlide);
+    if (nextSlot && presentationSession.slotStartedElapsedMs[nextSlot.id] === undefined) {
+      presentationSession.slotStartedElapsedMs[nextSlot.id] = getElapsedMs(presentationSession);
+    }
+    renderCurrentSlide();
+  }
+  renderPresentationMetrics();
+  syncPresentationSession();
 }
 
 async function refreshQuizMonitoring(force = false) {
@@ -1738,6 +1830,7 @@ function renderPresentationMetrics() {
       elements.sessionDelayBadge.classList.remove("status-ok", "status-warning", "status-danger");
       elements.sessionDelayBadge.classList.add(`status-${tone}`);
     }
+    renderRecoveryProposal(sessionDelayMs);
   elements.estimatedEnd.textContent =
     plannedEnd && estimatedEnd
       ? scheduleExtended
@@ -1960,6 +2053,8 @@ function leavePresentationMode() {
   quizResponseSummaries.clear();
   quizMonitoringSignature = null;
   monitoredQuizId = null;
+  selectedRecoverySlotIds.clear();
+  dismissedRecoverySlide = null;
   if (!isMonitoring) {
     localStorage.removeItem(LOCAL_SESSION_KEY);
   }
@@ -1978,8 +2073,15 @@ function nextSlide() {
     return;
   }
 
-  captureCompletedSlotDebt(presentationSession.currentSlide, presentationSession.currentSlide + 1);
-  presentationSession.currentSlide += 1;
+  const nextSlide = getNextAvailableSlide(
+    getSlotTiming(state.slots, presentationSession.slotReductionsMs),
+    presentationSession.currentSlide,
+    state.pageCount,
+    presentationSession.skippedSlotIds,
+  );
+  if (nextSlide === presentationSession.currentSlide) return;
+  captureCompletedSlotDebt(presentationSession.currentSlide, nextSlide);
+  presentationSession.currentSlide = nextSlide;
   const nextSlot = getCurrentSlot(
     getSlotTiming(state.slots, presentationSession.slotReductionsMs),
     presentationSession.currentSlide,
@@ -1997,7 +2099,15 @@ function previousSlide() {
     return;
   }
 
-  presentationSession.currentSlide -= 1;
+  const previousSlide = getNextAvailableSlide(
+    getSlotTiming(state.slots, presentationSession.slotReductionsMs),
+    presentationSession.currentSlide,
+    state.pageCount,
+    presentationSession.skippedSlotIds,
+    -1,
+  );
+  if (previousSlide === presentationSession.currentSlide) return;
+  presentationSession.currentSlide = previousSlide;
   renderCurrentSlide();
   renderPresentationMetrics();
   syncPresentationSession();
@@ -2037,6 +2147,8 @@ function resetPresentation() {
     ...createSessionState(state.slots[0]?.startSlide ?? 1),
     id: activeSessionId || crypto.randomUUID(),
   };
+  selectedRecoverySlotIds.clear();
+  dismissedRecoverySlide = null;
   elements.pauseBtn.disabled = false;
   elements.resumeBtn.disabled = true;
   persist();
@@ -2291,6 +2403,14 @@ function attachEvents() {
     publicQuizSelection = selected?.value || null;
     elements.publicQuizSubmit.disabled = !publicQuizSelection;
   });
+  elements.recoverySlots.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    if (target.checked) selectedRecoverySlotIds.add(target.value); else selectedRecoverySlotIds.delete(target.value);
+    renderPresentationMetrics();
+  });
+  elements.keepRecoveryPlanBtn.addEventListener("click", keepRecoveryPlan);
+  elements.skipRecoverySlotsBtn.addEventListener("click", skipSelectedRecoverySlots);
   elements.questionsList.addEventListener("click", (event) => {
       const questionButton = event.target.closest("[data-question-id]");
       if (!questionButton) {

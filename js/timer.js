@@ -58,6 +58,32 @@ export function getSessionDelayMs(session, slotTimings, currentSlide) {
   return plannedElapsedMs === null ? null : getElapsedMs(session) - plannedElapsedMs;
 }
 
+export function getFutureOptionalSlots(slots, currentSlide, skippedSlotIds = []) {
+  const skipped = new Set(skippedSlotIds);
+  return (Array.isArray(slots) ? slots : []).filter((slot) => (
+    slot?.optional === true
+    && Number(slot.startSlide) > currentSlide
+    && !skipped.has(slot.id)
+  ));
+}
+
+export function getRecoverySummary(delayMs, selectedSlots) {
+  const recoveryMs = (Array.isArray(selectedSlots) ? selectedSlots : [])
+    .reduce((total, slot) => total + Math.max(0, Number(slot.durationMinutes) || 0) * 60 * 1000, 0);
+  return { recoveryMs, remainingDelayMs: Math.max(0, delayMs - recoveryMs) };
+}
+
+export function getNextAvailableSlide(slots, currentSlide, pageCount, skippedSlotIds, direction = 1) {
+  const skipped = new Set(skippedSlotIds);
+  let slide = currentSlide + direction;
+  while (slide >= 1 && slide <= pageCount) {
+    const slot = getCurrentSlot(slots, slide);
+    if (!slot || !skipped.has(slot.id)) return slide;
+    slide += direction;
+  }
+  return currentSlide;
+}
+
 export function getSlotStatus(slot, slotElapsedMs, currentSlide) {
   if (!slot) {
     return {
