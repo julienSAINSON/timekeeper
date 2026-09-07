@@ -434,6 +434,7 @@ drop function if exists public.save_owned_session_quiz(uuid, text, text, jsonb, 
 drop function if exists public.get_owned_active_session_quiz(uuid, text);
 drop function if exists public.get_owned_quiz_response_count(uuid);
 drop function if exists public.submit_public_quiz_response(text, uuid, uuid, text);
+drop table if exists public.tk_quiz_response_events;
 drop table if exists public.tk_quiz_responses;
 drop table if exists public.tk_session_quizzes;
 
@@ -448,6 +449,53 @@ create table public.tk_quiz_responses (
 );
 
 alter table public.tk_quiz_responses enable row level security;
+
+create table if not exists public.tk_quiz_response_events (
+  session_id uuid not null references public.tk_presentation_sessions(id) on delete cascade,
+  quiz_id uuid not null,
+  revision bigint not null default 0,
+  primary key (session_id, quiz_id)
+);
+
+alter table public.tk_quiz_response_events enable row level security;
+
+drop policy if exists "quiz_response_events_are_visible_to_owner" on public.tk_quiz_response_events;
+create policy "quiz_response_events_are_visible_to_owner"
+  on public.tk_quiz_response_events for select to authenticated
+  using (exists (
+    select 1 from public.tk_presentation_sessions session
+    where session.id = tk_quiz_response_events.session_id
+      and session.user_id = auth.uid()
+  ));
+
+create or replace function public.notify_quiz_response_change()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  insert into public.tk_quiz_response_events (session_id, quiz_id, revision)
+  values (new.session_id, new.quiz_id, 1)
+  on conflict (session_id, quiz_id) do update
+  set revision = public.tk_quiz_response_events.revision + 1;
+  return new;
+end;
+$$;
+
+drop trigger if exists notify_quiz_response_change on public.tk_quiz_responses;
+create trigger notify_quiz_response_change
+  after insert on public.tk_quiz_responses
+  for each row execute function public.notify_quiz_response_change();
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'tk_quiz_response_events'
+  ) then
+    alter publication supabase_realtime add table public.tk_quiz_response_events;
+  end if;
+end;
+$$;
 
 create or replace function public.is_valid_project_quiz(p_quiz jsonb)
 returns boolean language sql immutable set search_path = '' as $$
@@ -526,14 +574,24 @@ begin
   end if;
 
   return jsonb_build_object(
-    'sessionId', p_session_id,
     'quizId', p_quiz_id,
-    'responseCount', (select count(*) from public.tk_quiz_responses response where response.session_id = p_session_id and response.quiz_id = p_quiz_id)
+    'totalResponses', (select count(*) from public.tk_quiz_responses response where response.session_id = p_session_id and response.quiz_id = p_quiz_id),
+    'counts', coalesce((
+      select jsonb_object_agg(grouped.option_id, grouped.response_count)
+      from (
+        select response.option_id, count(*) as response_count
+        from public.tk_quiz_responses response
+        where response.session_id = p_session_id and response.quiz_id = p_quiz_id
+        group by response.option_id
+      ) grouped
+    ), '{}'::jsonb)
   );
 end;
 $$;
 
 revoke all on table public.tk_quiz_responses from anon, authenticated;
+revoke all on table public.tk_quiz_response_events from anon;
+grant select on table public.tk_quiz_response_events to authenticated;
 revoke all on function public.is_valid_project_quiz(jsonb) from public;
 revoke all on function public.get_public_room_activity(text, uuid), public.submit_public_quiz_response(text, uuid, text), public.get_owned_quiz_response_summary(uuid, uuid) from public;
 grant execute on function public.get_public_room_activity(text, uuid), public.submit_public_quiz_response(text, uuid, text) to anon, authenticated;

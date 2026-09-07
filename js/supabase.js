@@ -211,3 +211,19 @@ export async function publishPublicRoomActivity(roomToken) {
   await channel.send({ type: "broadcast", event: "activity", payload: {} });
   await getSupabaseClient().removeChannel(channel);
 }
+
+export function subscribeToQuizResponseEvents(sessionId, onInsert) {
+  const channel = getSupabaseClient().channel(`quiz-response-events:${sessionId}`)
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "tk_quiz_response_events", filter: `session_id=eq.${sessionId}` },
+      onInsert,
+    )
+    .on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "tk_quiz_response_events", filter: `session_id=eq.${sessionId}` },
+      onInsert,
+    )
+    .subscribe();
+  return () => getSupabaseClient().removeChannel(channel);
+}

@@ -126,6 +126,42 @@ select {
   margin-top: 3px;
 }
 
+.quiz-responses-question,
+.quiz-responses-count {
+  margin: 0;
+}
+
+.quiz-responses-question {
+  font-weight: 700;
+}
+
+.quiz-responses-count {
+  color: var(--muted);
+}
+
+.quiz-responses-options {
+  display: grid;
+  gap: 8px;
+}
+
+.quiz-response-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.quiz-response-option strong {
+  color: var(--accent);
+}
+
+.quiz-response-option span:last-child {
+  color: var(--muted);
+  font-weight: 700;
+}
+
 .access-screen {
   position: fixed;
   z-index: 2000;

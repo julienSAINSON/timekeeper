@@ -32,9 +32,10 @@ import {
 import {
   createQuizConfiguration,
   getParticipantId,
+  getQuizResponseRows,
   normalizePublicQuizActivity,
   validateQuizConfiguration,
-} from "./quiz.js";
+} from "./quiz.js?v=quiz-monitoring-realtime-v1";
 import { calculateSlotReductions } from "./overrun.js";
 import { renderTimeline } from "./timeline.js";
 import {
@@ -56,8 +57,10 @@ import {
   setAuthAccessToken,
   subscribeToPresentationSession,
   subscribeToPublicRoomActivity,
+  subscribeToQuizResponseEvents,
   subscribeToSessionQuestions,
   submitPublicQuizResponse,
+  getOwnedQuizResponseSummary,
   publishPublicRoomActivity,
   updateOwnedSessionQuestionStatus,
   updatePresentationSession,
@@ -89,8 +92,10 @@ let sessionVersion = null;
 let stopSessionSubscription = null;
 let stopQuestionsSubscription = null;
 let stopPublicRoomActivity = null;
+let stopQuizResponseEvents = null;
 let publicQuiz = null;
 let publicQuizSelection = null;
+let monitoredQuizId = null;
 let sessionWriteQueue = Promise.resolve();
 let sessionQuestions = [];
 let selectedQuestionId = null;
@@ -276,6 +281,10 @@ const elements = {
   publicQuizOptions: document.querySelector("#publicQuizOptions"),
   publicQuizSubmit: document.querySelector("#publicQuizSubmit"),
   publicQuizFeedback: document.querySelector("#publicQuizFeedback"),
+  quizResponsesPanel: document.querySelector("#quizResponsesPanel"),
+  quizResponsesQuestion: document.querySelector("#quizResponsesQuestion"),
+  quizResponsesOptions: document.querySelector("#quizResponsesOptions"),
+  quizResponsesTotal: document.querySelector("#quizResponsesTotal"),
   questionsPanel: document.querySelector("#questionsPanel"),
   questionsList: document.querySelector("#questionsList"),
   selectedQuestion: document.querySelector("#selectedQuestion"),
@@ -1392,6 +1401,14 @@ async function joinPresentationSession(sessionId) {
   applySessionRecord(record);
   const room = await loadOwnedPublicSessionRoom(sessionId);
   activeRoomToken = room?.roomToken || null;
+  stopQuizResponseEvents?.();
+  if (viewMode === "monitoring") {
+    stopQuizResponseEvents = subscribeToQuizResponseEvents(sessionId, ({ new: event }) => {
+      if (event.quiz_id === monitoredQuizId) {
+        refreshQuizResponseSummary().catch((error) => console.error("Impossible d'actualiser les réponses au quiz.", error));
+      }
+    });
+  }
   renderRoomAccess();
   await loadQuestionsForMonitoring(sessionId);
   stopSessionSubscription?.();
@@ -1401,6 +1418,43 @@ async function joinPresentationSession(sessionId) {
     }
     applySessionRecord(remoteSession);
   });
+}
+
+async function refreshQuizResponseSummary(currentSlot = getPresentationSummary().currentSlot) {
+  const quiz = currentSlot?.type === "quiz" ? currentSlot.quiz : null;
+  const isMonitoring = viewMode === "monitoring" && Boolean(activeSessionId && quiz);
+  elements.quizResponsesPanel.hidden = !isMonitoring;
+  if (!isMonitoring) {
+    monitoredQuizId = null;
+    elements.quizResponsesOptions.replaceChildren();
+    return;
+  }
+
+  const validation = validateQuizConfiguration(quiz);
+  monitoredQuizId = quiz.id;
+  elements.quizResponsesQuestion.textContent = quiz.question;
+  if (!validation.valid) {
+    elements.quizResponsesOptions.replaceChildren(Object.assign(document.createElement("p"), { textContent: "La configuration de ce Quiz est incomplète." }));
+    elements.quizResponsesTotal.textContent = "Total : indisponible";
+    return;
+  }
+  const summary = await getOwnedQuizResponseSummary(activeSessionId, quiz.id);
+  if (viewMode === "monitoring" && monitoredQuizId === quiz.id) {
+    const responseRows = getQuizResponseRows(quiz, summary.counts);
+    elements.quizResponsesOptions.replaceChildren(...responseRows.map((option) => {
+      const item = document.createElement("div");
+      item.className = "quiz-response-option";
+      const identifier = document.createElement("strong");
+      identifier.textContent = option.id;
+      const label = document.createElement("span");
+      label.textContent = option.label;
+      const count = document.createElement("span");
+      count.textContent = `${option.count} réponse(s)`;
+      item.append(identifier, label, count);
+      return item;
+    }));
+    elements.quizResponsesTotal.textContent = `Total : ${Number(summary.totalResponses || 0)} réponse(s)`;
+  }
 }
 
 function syncPresentationSession() {
@@ -1607,6 +1661,10 @@ function renderPresentationMetrics() {
   )}`;
   elements.slotStatusText.textContent = slotStatus.label;
   const currentSlotIndex = slotTimings.findIndex((slot) => slot.id === currentSlot?.id);
+  const activeQuizId = currentSlot?.type === "quiz" ? currentSlot.quiz?.id : null;
+  if (viewMode === "monitoring" && activeQuizId !== monitoredQuizId) {
+    refreshQuizResponseSummary(currentSlot).catch((error) => console.error("Impossible de charger les réponses au quiz.", error));
+  }
   const nextSlot = currentSlotIndex >= 0 ? slotTimings[currentSlotIndex + 1] : null;
   elements.sideCurrentSlotName.textContent = currentSlot?.name ?? "Hors plan";
   elements.sideCurrentSlotTime.textContent = `${formatClock(slotStatus.slotElapsedMs)} / ${formatClock(
@@ -1836,6 +1894,8 @@ function leavePresentationMode() {
   sessionVersion = null;
   stopQuestionsSubscription?.();
   stopQuestionsSubscription = null;
+  stopQuizResponseEvents?.();
+  stopQuizResponseEvents = null;
   sessionQuestions = [];
   selectedQuestionId = null;
   if (!isMonitoring) {

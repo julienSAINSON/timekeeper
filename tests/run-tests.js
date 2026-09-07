@@ -24,11 +24,12 @@ import {
 import {
   createQuizConfiguration,
   getParticipantId,
+  getQuizResponseRows,
   normalizeQuizConfiguration,
   normalizePublicQuizActivity,
   validateQuizConfiguration,
   validateQuizDraft,
-} from "../js/quiz.js?v=quiz-project-config-v1";
+} from "../js/quiz.js?v=quiz-monitoring-realtime-v1";
 import {
   formatClock,
   getCurrentSlot,
@@ -203,6 +204,30 @@ test("Le DTO public du Quiz ne conserve aucune donnée de correction", () => {
   equal(publicQuiz.hasResponded, true);
   assert(!Object.hasOwn(publicQuiz, "correctOptionId"));
   assert(!Object.hasOwn(publicQuiz, "sessionId"));
+});
+
+test("Prépare les compteurs à zéro pour un Quiz à deux propositions", () => {
+  const quiz = createQuizConfiguration();
+  quiz.question = "Question";
+  quiz.options[0].label = "ProjectState";
+  quiz.options[1].label = "SessionState";
+  quiz.correctOptionId = "A";
+  const rows = getQuizResponseRows(quiz, {});
+  equal(rows.length, 2);
+  equal(rows[0].count, 0);
+  equal(rows[1].count, 0);
+  assert(rows.every((row) => !Object.hasOwn(row, "participant_id")));
+});
+
+test("Prépare les compteurs agrégés pour les quatre propositions", () => {
+  const quiz = createQuizConfiguration();
+  quiz.question = "Question";
+  quiz.options.forEach((option) => { option.label = `Option ${option.id}`; });
+  quiz.correctOptionId = "D";
+  const rows = getQuizResponseRows(quiz, { A: 12, B: 27, C: 3, D: 0 });
+  equal(rows.length, 4);
+  equal(rows.reduce((total, row) => total + row.count, 0), 42);
+  assert(rows.every((row) => !Object.hasOwn(row, "participant_id")));
 });
 
 test("Préserve l'identifiant et les options du Quiz lors de la persistence locale", () => {

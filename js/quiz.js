@@ -66,6 +66,18 @@ export function normalizePublicQuizActivity(activity) {
     : null;
 }
 
+export function getQuizResponseRows(quiz, counts) {
+  const validation = validateQuizConfiguration(quiz);
+  if (!validation.valid) return [];
+  return validation.quiz.options
+    .filter((option) => option.label.trim())
+    .map((option) => ({
+      id: option.id,
+      label: option.label,
+      count: Math.max(0, Number.parseInt(counts?.[option.id], 10) || 0),
+    }));
+}
+
 export function normalizeQuizDraft(question, optionLabels) {
   const cleanQuestion = String(question || "").trim();
   const options = optionLabels.map((label, index) => ({
