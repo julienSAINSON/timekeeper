@@ -180,3 +180,51 @@ export function subscribeToSessionQuestions(sessionId, onInsert, onUpdate) {
 
   return () => realtimeClient.removeChannel(channel);
 }
+
+export function getPublicRoomActivity(roomToken, participantId) {
+  return callRpc("get_public_room_activity", { p_room_token: roomToken, p_participant_id: participantId });
+}
+
+export function saveOwnedSessionQuiz(sessionId, slotId, question, options, correctOptionId) {
+  return callRpc("save_owned_session_quiz", {
+    p_session_id: sessionId, p_slot_id: slotId, p_question: question,
+    p_options: options, p_correct_option_id: correctOptionId || null,
+  });
+}
+
+export function getOwnedActiveSessionQuiz(sessionId, slotId) {
+  return callRpc("get_owned_active_session_quiz", { p_session_id: sessionId, p_slot_id: slotId });
+}
+
+export function submitPublicQuizResponse(roomToken, participantId, quizId, optionId) {
+  return callRpc("submit_public_quiz_response", {
+    p_room_token: roomToken, p_participant_id: participantId, p_quiz_id: quizId, p_option_id: optionId,
+  });
+}
+
+export function getOwnedQuizResponseCount(quizId) {
+  return callRpc("get_owned_quiz_response_count", { p_quiz_id: quizId });
+}
+
+export function subscribeToQuizResponses(quizId, onInsert) {
+  const client = getSupabaseClient();
+  const channel = client.channel(`quiz-responses:${quizId}`).on("postgres_changes", {
+    event: "INSERT", schema: "public", table: "tk_quiz_responses", filter: `quiz_id=eq.${quizId}`,
+  }, ({ new: response }) => onInsert(response)).subscribe();
+  return () => client.removeChannel(channel);
+}
+
+export function subscribeToPublicRoomActivity(roomToken, onActivity) {
+  const client = getSupabaseClient();
+  const channel = client.channel(`room-activity:${roomToken}`, { config: { private: false } })
+    .on("broadcast", { event: "activity" }, onActivity).subscribe();
+  return () => client.removeChannel(channel);
+}
+
+export async function publishPublicRoomActivity(roomToken) {
+  if (!roomToken) return;
+  const channel = getSupabaseClient().channel(`room-activity:${roomToken}`, { config: { private: false } });
+  await channel.subscribe();
+  await channel.send({ type: "broadcast", event: "activity", payload: {} });
+  await getSupabaseClient().removeChannel(channel);
+}

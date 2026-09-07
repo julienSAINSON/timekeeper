@@ -74,6 +74,12 @@ Le participant transmet uniquement le `roomToken` et le texte. La RPC `create_pu
 
 Après chaque évolution, exécutez tout le script [supabase/schema.sql](supabase/schema.sql) dans le SQL Editor Supabase. Il crée les tables, fonctions, politiques RLS et la publication Realtime nécessaires, puis demande à PostgREST de recharger son cache de schéma.
 
+## Quiz interactif
+
+Les créneaux existants de type `quiz` peuvent être configurés dans Monitoring lorsqu'ils deviennent actifs : le MC renseigne une question, deux à quatre propositions et, facultativement, la bonne réponse. Cette dernière reste dans `tk_session_quizzes` et n'est jamais incluse dans le DTO public.
+
+Le Room reçoit l'activité du créneau par un Broadcast Realtime associé à son token opaque, puis charge un DTO public. À l'entrée d'un créneau Quiz, il affiche automatiquement les propositions ; à la sortie, il revient au formulaire de question. Un identifiant technique anonyme persistant dans le navigateur garantit avec la contrainte SQL `unique (quiz_id, participant_id)` qu'une réponse ne peut être enregistrée qu'une fois, même après rechargement.
+
 ## Accès Google et bac à sable
 
 Au démarrage, Timekeeper propose un accès Google ou un accès sans compte au bac à sable. Les sessions Google sont persistées par Supabase : un utilisateur déjà connecté accède directement à l'application. Le bouton « Se déconnecter » ferme la session et revient à l'écran d'accès, où le bac à sable reste disponible.

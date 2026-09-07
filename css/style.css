@@ -95,6 +95,39 @@ select {
   font-weight: 600;
 }
 
+.public-quiz,
+.quiz-options,
+.quiz-editor-options,
+#publicQuizForm,
+#quizEditor {
+  display: grid;
+  gap: 12px;
+}
+
+.public-quiz { margin-top: 28px; }
+
+.quiz-option {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+  background: #ffffff;
+  font-weight: 600;
+}
+
+.quiz-editor-options input,
+#quizEditor textarea,
+#quizEditor select {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  color: var(--text);
+}
+
+#quizEditor textarea { min-height: 84px; resize: vertical; }
+
 .access-screen {
   position: fixed;
   z-index: 2000;

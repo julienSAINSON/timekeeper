@@ -29,12 +29,16 @@ import {
   isQuestionStatus,
   validateQuestionText,
 } from "./questions.js";
+import { getParticipantId, validateQuizDraft } from "./quiz.js";
 import { calculateSlotReductions } from "./overrun.js";
 import { renderTimeline } from "./timeline.js";
 import {
   createPresentationSession,
   createPublicSessionRoom,
   createPublicSessionQuestion,
+  getOwnedActiveSessionQuiz,
+  getOwnedQuizResponseCount,
+  getPublicRoomActivity,
   createSharedPlenary,
   deleteSharedPlenary,
   forgetProject,
@@ -49,6 +53,11 @@ import {
   setAuthAccessToken,
   subscribeToPresentationSession,
   subscribeToSessionQuestions,
+  subscribeToPublicRoomActivity,
+  subscribeToQuizResponses,
+  submitPublicQuizResponse,
+  saveOwnedSessionQuiz,
+  publishPublicRoomActivity,
   updateOwnedSessionQuestionStatus,
   updatePresentationSession,
 } from "./supabase.js?v=audience-questions-v1";
@@ -78,6 +87,10 @@ let activeRoomToken = null;
 let sessionVersion = null;
 let stopSessionSubscription = null;
 let stopQuestionsSubscription = null;
+let stopPublicRoomActivity = null;
+let stopQuizResponsesSubscription = null;
+let activeQuiz = null;
+let quizResponseCount = 0;
 let sessionWriteQueue = Promise.resolve();
 let sessionQuestions = [];
 let selectedQuestionId = null;
@@ -265,6 +278,12 @@ const elements = {
   selectedQuestionStatus: document.querySelector("#selectedQuestionStatus"),
   answerQuestionBtn: document.querySelector("#answerQuestionBtn"),
   dismissQuestionBtn: document.querySelector("#dismissQuestionBtn"),
+  publicQuiz: document.querySelector("#publicQuiz"), publicQuizForm: document.querySelector("#publicQuizForm"),
+  publicQuizQuestion: document.querySelector("#publicQuizQuestion"), publicQuizOptions: document.querySelector("#publicQuizOptions"),
+  publicQuizSubmit: document.querySelector("#publicQuizSubmit"), publicQuizFeedback: document.querySelector("#publicQuizFeedback"),
+  quizPanel: document.querySelector("#quizPanel"), quizActiveStatus: document.querySelector("#quizActiveStatus"),
+  quizEditor: document.querySelector("#quizEditor"), quizQuestionInput: document.querySelector("#quizQuestionInput"),
+  quizCorrectOption: document.querySelector("#quizCorrectOption"), quizEditorFeedback: document.querySelector("#quizEditorFeedback"),
 };
 
 function showApplication(mode, user = null, accessToken = null) {
@@ -1081,12 +1100,81 @@ async function loadPublicRoom(roomToken) {
     elements.publicRoomDetail.textContent = room.isRunning
       ? "La session est en cours. Restez sur cette page pour participer aux prochaines activités."
       : "En attente du début de la session.";
-    elements.publicQuestionForm.hidden = false;
+    initAuth({ supabaseUrl: SUPABASE_URL, supabaseAnonKey: SUPABASE_ANON_KEY });
+    stopPublicRoomActivity?.();
+    stopPublicRoomActivity = subscribeToPublicRoomActivity(roomToken, () => refreshPublicRoomActivity());
+    await refreshPublicRoomActivity();
   } catch (error) {
     console.error("Impossible de rejoindre le Room.", error);
     elements.publicRoomStatus.textContent = "Cette session n'est plus disponible";
     elements.publicRoomDetail.textContent = "Le lien est invalide ou la session est terminée.";
   }
+}
+
+function renderPublicQuiz(activity) {
+  const quiz = activity?.quiz;
+  elements.publicQuiz.hidden = !quiz;
+  elements.publicQuestionForm.hidden = Boolean(quiz);
+  if (!quiz) return;
+  activeQuiz = quiz;
+  elements.publicQuizQuestion.textContent = quiz.question;
+  elements.publicQuizOptions.replaceChildren(...quiz.options.map((option) => {
+    const label = document.createElement("label");
+    label.className = "quiz-option";
+    const input = document.createElement("input"); input.type = "radio"; input.name = "quizOption"; input.value = option.id; input.disabled = quiz.hasResponded;
+    label.append(input, document.createTextNode(`${option.id} - ${option.label}`));
+    return label;
+  }));
+  elements.publicQuizSubmit.disabled = quiz.hasResponded;
+  elements.publicQuizFeedback.textContent = quiz.hasResponded ? "Réponse enregistrée" : "";
+}
+
+async function refreshPublicRoomActivity() {
+  try {
+    const activity = await getPublicRoomActivity(publicRoomToken, getParticipantId());
+    renderPublicQuiz(activity);
+  } catch (error) { console.error("Impossible d'actualiser l'activité du Room.", error); }
+}
+
+async function renderQuizMonitoring() {
+  const slot = presentationSession && getCurrentSlot(getSlotTiming(state.slots, presentationSession.slotReductionsMs), presentationSession.currentSlide);
+  const isMonitoringQuiz = viewMode === "monitoring" && slot?.type === "quiz" && activeSessionId;
+  elements.quizPanel.hidden = !isMonitoringQuiz;
+  if (!isMonitoringQuiz) return;
+  activeQuiz = await getOwnedActiveSessionQuiz(activeSessionId, slot.id);
+  elements.quizEditor.hidden = Boolean(activeQuiz);
+  elements.quizActiveStatus.textContent = activeQuiz ? `Quiz actif - ${quizResponseCount} réponse${quizResponseCount > 1 ? "s" : ""}` : "Configurez le quiz de ce créneau.";
+  if (activeQuiz) {
+    quizResponseCount = await getOwnedQuizResponseCount(activeQuiz.id);
+    elements.quizActiveStatus.textContent = `Quiz actif - ${quizResponseCount} réponse${quizResponseCount > 1 ? "s" : ""}`;
+    stopQuizResponsesSubscription?.();
+    stopQuizResponsesSubscription = subscribeToQuizResponses(activeQuiz.id, () => { quizResponseCount += 1; elements.quizActiveStatus.textContent = `Quiz actif - ${quizResponseCount} réponse${quizResponseCount > 1 ? "s" : ""}`; });
+  }
+}
+
+async function saveQuizFromEditor(event) {
+  event.preventDefault();
+  const slot = presentationSession && getCurrentSlot(getSlotTiming(state.slots, presentationSession.slotReductionsMs), presentationSession.currentSlide);
+  const result = validateQuizDraft(elements.quizQuestionInput.value, [...elements.quizEditor.querySelectorAll("[data-quiz-option]")].map((input) => input.value));
+  if (!result.valid || !slot || !activeSessionId) { elements.quizEditorFeedback.textContent = result.error; return; }
+  try {
+    activeQuiz = await saveOwnedSessionQuiz(activeSessionId, slot.id, result.quiz.question, result.quiz.options, elements.quizCorrectOption.value);
+    elements.quizEditorFeedback.textContent = "Quiz enregistré";
+    await publishPublicRoomActivity(activeRoomToken);
+    await renderQuizMonitoring();
+  } catch (error) { elements.quizEditorFeedback.textContent = "Impossible d'enregistrer le quiz."; console.error(error); }
+}
+
+async function submitPublicQuiz(event) {
+  event.preventDefault();
+  const selected = elements.publicQuizOptions.querySelector("input:checked");
+  if (!selected || !activeQuiz) return;
+  elements.publicQuizSubmit.disabled = true;
+  try {
+    await submitPublicQuizResponse(publicRoomToken, getParticipantId(), activeQuiz.id, selected.value);
+    elements.publicQuizFeedback.textContent = "Réponse enregistrée";
+    elements.publicQuizOptions.querySelectorAll("input").forEach((input) => { input.disabled = true; });
+  } catch (error) { elements.publicQuizFeedback.textContent = "Cette réponse est indisponible."; console.error(error); }
 }
 
 function renderQuestions() {
@@ -1139,6 +1227,7 @@ function upsertQuestion(question) {
     sessionQuestions[index] = question;
   }
   renderQuestions();
+  renderQuizMonitoring().catch((error) => console.error("Impossible de charger le quiz.", error));
 }
 
 async function loadQuestionsForMonitoring(sessionId) {
@@ -1278,6 +1367,7 @@ function syncPresentationSession() {
         sessionVersion = Number(savedSession.version);
         presentationSession.version = sessionVersion;
       }
+      publishPublicRoomActivity(activeRoomToken);
     } catch (error) {
       console.error("Impossible de synchroniser la session.", error);
       const latestSession = await loadPresentationSession(sessionId);
@@ -1722,6 +1812,7 @@ function nextSlide() {
   }
   renderCurrentSlide();
   renderPresentationMetrics();
+  renderQuizMonitoring().catch((error) => console.error("Impossible de charger le quiz.", error));
   syncPresentationSession();
 }
 
@@ -1733,6 +1824,7 @@ function previousSlide() {
   presentationSession.currentSlide -= 1;
   renderCurrentSlide();
   renderPresentationMetrics();
+  renderQuizMonitoring().catch((error) => console.error("Impossible de charger le quiz.", error));
   syncPresentationSession();
 }
 
@@ -1998,6 +2090,9 @@ function attachEvents() {
   elements.exportReportBtn.addEventListener("click", exportPresentationReport);
   elements.exitPresentationBtn.addEventListener("click", leavePresentationMode);
     elements.publicQuestionForm.addEventListener("submit", submitPublicQuestion);
+    elements.publicQuizForm.addEventListener("submit", submitPublicQuiz);
+    elements.publicQuizOptions.addEventListener("change", () => { elements.publicQuizSubmit.disabled = !elements.publicQuizOptions.querySelector("input:checked"); });
+    elements.quizEditor.addEventListener("submit", saveQuizFromEditor);
     elements.questionsList.addEventListener("click", (event) => {
       const questionButton = event.target.closest("[data-question-id]");
       if (!questionButton) {

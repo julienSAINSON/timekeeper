@@ -21,6 +21,7 @@ import {
   isQuestionStatus,
   validateQuestionText,
 } from "../js/questions.js";
+import { getParticipantId, validateQuizDraft } from "../js/quiz.js";
 import {
   formatClock,
   getCurrentSlot,
@@ -122,6 +123,29 @@ test("Limite les statuts de question aux valeurs prévues", () => {
   assert(isQuestionStatus("dismissed"));
   assert(!isQuestionStatus("deleted"));
   equal(getQuestionStatusLabel("pending"), "En attente");
+});
+
+test("Valide un quiz de deux à quatre propositions", () => {
+  const quiz = validateQuizDraft("  Quelle réponse ? ", [" Une ", "Deux", "", ""]);
+  assert(quiz.valid);
+  equal(quiz.quiz.question, "Quelle réponse ?");
+  equal(quiz.quiz.options.length, 2);
+  equal(quiz.quiz.options[0].id, "A");
+  assert(!validateQuizDraft("", ["A", "B"]).valid, "La question est obligatoire.");
+  assert(!validateQuizDraft("Question", ["A"]).valid, "Deux propositions sont requises.");
+  assert(!validateQuizDraft("Question", ["A", "B", "C", "D", "E"]).valid, "Quatre propositions au maximum.");
+});
+
+test("Conserve l'identifiant technique anonyme du participant", () => {
+  const key = "safe-timekeeper-participant-id-v1";
+  const previous = localStorage.getItem(key);
+  try {
+    localStorage.removeItem(key);
+    const first = getParticipantId();
+    equal(getParticipantId(), first);
+  } finally {
+    if (previous === null) localStorage.removeItem(key); else localStorage.setItem(key, previous);
+  }
 });
 
 test("Génère des tokens de Room opaques et distincts", () => {
