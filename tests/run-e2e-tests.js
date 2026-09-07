@@ -322,15 +322,35 @@ test("Navigue depuis Monitoring avec une session locale", async () => {
     localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify({
       project: {
         pageCount: 3,
-        slots: [{
-          id: "slot-1",
-          name: "Présentation",
-          type: "presentation",
-          startSlide: 1,
-          endSlide: 3,
-          durationMinutes: 3,
-          optional: false,
-        }],
+        slots: [
+          {
+            id: "slot-1",
+            name: "Présentation",
+            type: "presentation",
+            startSlide: 1,
+            endSlide: 1,
+            durationMinutes: 1,
+            optional: false,
+          },
+          {
+            id: "slot-2",
+            name: "Questions optionnelles",
+            type: "question",
+            startSlide: 2,
+            endSlide: 2,
+            durationMinutes: 1,
+            optional: true,
+          },
+          {
+            id: "slot-3",
+            name: "Conclusion",
+            type: "presentation",
+            startSlide: 3,
+            endSlide: 3,
+            durationMinutes: 1,
+            optional: false,
+          },
+        ],
         plenary: { startTime: "09:00", durationMinutes: 3 },
       },
       session: {
@@ -349,6 +369,7 @@ test("Navigue depuis Monitoring avec une session locale", async () => {
         slotOverrunsMs: {},
         slotReductionsMs: {},
         slotStartedElapsedMs: { "slot-1": 0 },
+        skippedSlotIds: ["slot-2"],
         overrunStrategy: "next",
       },
     }));
@@ -358,27 +379,50 @@ test("Navigue depuis Monitoring avec une session locale", async () => {
       () => monitoringDocument.querySelector("#slideCounter").textContent === "Slide 1 / 3",
       "Monitoring n'a pas restauré la session locale.",
     );
+    await waitFor(
+      () => monitoringDocument.querySelectorAll("#timelineTrack .timeline-slot").length === 2,
+      "Monitoring doit retirer le créneau ignoré de sa timeline active.",
+    );
+    assert(
+      !monitoringDocument.querySelector("#timelineTrack").textContent.includes("Questions optionnelles"),
+      "Le créneau retiré ne doit plus être affiché dans Monitoring.",
+    );
     monitoringDocument.querySelector("#nextSlideBtn").click();
     await waitFor(
-      () => monitoringDocument.querySelector("#slideCounter").textContent === "Slide 2 / 3",
-      "Le bouton Suivante de Monitoring n'a pas avancé la slide.",
+      () => monitoringDocument.querySelector("#slideCounter").textContent === "Slide 3 / 3",
+      "Le bouton Suivante de Monitoring doit ignorer le créneau retiré.",
     );
-    monitoringDocument.querySelector("#exitPresentationBtn").click();
+    const savedSession = JSON.parse(monitoringFrame.contentWindow.localStorage.getItem(LOCAL_SESSION_KEY));
+    equal(savedSession.project.slots.length, 3);
+    equal(savedSession.project.slots[1].name, "Questions optionnelles");
+    equal(savedSession.session.skippedSlotIds.join(","), "slot-2");
+    monitoringFrame.remove();
+    monitoringFrame = await loadMonitoringApplication();
+    const reloadedDocument = monitoringFrame.contentDocument;
     await waitFor(
-      () => monitoringDocument.querySelector("#configView").classList.contains("active"),
+      () => reloadedDocument.querySelector("#slideCounter").textContent === "Slide 3 / 3",
+      "Le rechargement doit restaurer la session adaptée.",
+    );
+    assert(
+      !reloadedDocument.querySelector("#timelineTrack").textContent.includes("Questions optionnelles"),
+      "Le rechargement doit conserver la timeline active adaptée.",
+    );
+    reloadedDocument.querySelector("#exitPresentationBtn").click();
+    await waitFor(
+      () => reloadedDocument.querySelector("#configView").classList.contains("active"),
       "Quitter doit ramener Monitoring à la configuration.",
     );
     assert(
-      !monitoringDocument.querySelector("#presentationView").classList.contains("active"),
+      !reloadedDocument.querySelector("#presentationView").classList.contains("active"),
       "Quitter doit fermer la vue Monitoring.",
     );
     assert(
       !monitoringFrame.contentWindow.location.search.includes("view=monitoring"),
       "Quitter doit retirer le mode Monitoring de l'URL.",
     );
-    const savedSession = JSON.parse(monitoringFrame.contentWindow.localStorage.getItem(LOCAL_SESSION_KEY));
+    const retainedSession = JSON.parse(monitoringFrame.contentWindow.localStorage.getItem(LOCAL_SESSION_KEY));
     assert(
-      savedSession?.session?.isRunning && !savedSession.session.isPaused,
+      retainedSession?.session?.isRunning && !retainedSession.session.isPaused,
       "Quitter Monitoring ne doit ni arrêter ni supprimer la session locale active.",
     );
   } finally {

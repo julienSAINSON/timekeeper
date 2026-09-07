@@ -42,6 +42,11 @@ export function getSlotTiming(slots, slotReductionsMs = {}) {
   });
 }
 
+export function getActiveSessionSlots(slots, skippedSlotIds = []) {
+  const skipped = new Set(skippedSlotIds);
+  return (Array.isArray(slots) ? slots : []).filter((slot) => !skipped.has(slot.id));
+}
+
 export function getCurrentSlot(slotTimings, currentSlide) {
   return slotTimings.find(
     (slot) => currentSlide >= Number(slot.startSlide) && currentSlide <= Number(slot.endSlide),
@@ -59,11 +64,9 @@ export function getSessionDelayMs(session, slotTimings, currentSlide) {
 }
 
 export function getFutureOptionalSlots(slots, currentSlide, skippedSlotIds = []) {
-  const skipped = new Set(skippedSlotIds);
-  return (Array.isArray(slots) ? slots : []).filter((slot) => (
+  return getActiveSessionSlots(slots, skippedSlotIds).filter((slot) => (
     slot?.optional === true
     && Number(slot.startSlide) > currentSlide
-    && !skipped.has(slot.id)
   ));
 }
 

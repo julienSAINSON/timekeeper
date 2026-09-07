@@ -35,6 +35,7 @@ import {
 } from "../js/quiz.js?v=quiz-comprehension-signals-v1";
 import {
   formatClock,
+  getActiveSessionSlots,
   getCurrentSlot,
   getElapsedMs,
   getFutureOptionalSlots,
@@ -44,7 +45,7 @@ import {
   getSessionDelayMs,
   getSlotStatus,
   getSlotTiming,
-} from "../js/timer.js?v=optional-slot-recovery-v1";
+} from "../js/timer.js?v=active-session-timeline-v1";
 import { calculateSlotReductions } from "../js/overrun.js";
 import { renderTimeline } from "../js/timeline.js";
 
@@ -546,6 +547,34 @@ test("Calcule la récupération sélectionnée sans modifier les créneaux", () 
   equal(recovery.remainingDelayMs, 0);
   equal(first.durationMinutes, 3);
   equal(second.durationMinutes, 2);
+});
+
+test("Dérive la timeline active sans modifier le planning du projet", () => {
+  const projectSlots = [
+    { ...slot("required", 1, 1, 5), optional: false },
+    { ...slot("removed", 2, 2, 3), optional: true },
+    { ...slot("remaining", 3, 3, 2), optional: true },
+  ];
+  const projectSnapshot = JSON.stringify(projectSlots);
+  const activeSlots = getActiveSessionSlots(projectSlots, ["removed"]);
+  equal(activeSlots.map((item) => item.id).join(","), "required,remaining");
+  equal(JSON.stringify(projectSlots), projectSnapshot);
+  equal(getFutureOptionalSlots(projectSlots, 1, ["removed"])[0].id, "remaining");
+});
+
+test("Recalcule les offsets et la durée depuis la timeline active", () => {
+  const projectSlots = [
+    slot("first", 1, 1, 5),
+    slot("removed", 2, 2, 3),
+    slot("last", 3, 3, 2),
+  ];
+  const activeTimings = getSlotTiming(getActiveSessionSlots(projectSlots, ["removed"]));
+  equal(activeTimings.at(-1).endOffsetMs, 420000);
+  equal(getPlannedElapsedMs(activeTimings, 3), 300000);
+  const now = Date.now();
+  const session = { startedAt: now - 360000, totalPausedMs: 0, isPaused: false };
+  const delay = getSessionDelayMs(session, activeTimings, 3);
+  assert(delay >= 59900 && delay <= 60100, `Retard adapté inattendu : ${delay}.`);
 });
 
 test("La navigation évite les plages de créneaux ignorés", () => {

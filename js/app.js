@@ -12,6 +12,7 @@ import { getPdfDocument, loadPdfDocument, renderPage } from "./pdfViewer.js";
 import {
   formatClock,
   formatHour,
+  getActiveSessionSlots,
   getCurrentSlot,
   getElapsedMs,
   getFutureOptionalSlots,
@@ -20,7 +21,7 @@ import {
   getSessionDelayMs,
   getSlotStatus,
   getSlotTiming,
-} from "./timer.js?v=optional-slot-recovery-v1";
+} from "./timer.js?v=active-session-timeline-v1";
 import { createSessionState, normalizeSessionState } from "./session.js?v=optional-slot-recovery-v1";
 import {
   generateRoomToken,
@@ -1551,7 +1552,6 @@ function keepRecoveryPlan() {
 }
 
 function skipSelectedRecoverySlots() {
-  const slotTimings = getSlotTiming(state.slots, presentationSession.slotReductionsMs);
   const selectableSlots = getFutureOptionalSlots(
     state.slots,
     presentationSession.currentSlide,
@@ -1567,7 +1567,7 @@ function skipSelectedRecoverySlots() {
   selectedRecoverySlotIds.clear();
   dismissedRecoverySlide = null;
   const nextSlide = getNextAvailableSlide(
-    slotTimings,
+    state.slots,
     presentationSession.currentSlide,
     state.pageCount,
     presentationSession.skippedSlotIds,
@@ -1575,7 +1575,10 @@ function skipSelectedRecoverySlots() {
   if (nextSlide !== presentationSession.currentSlide) {
     captureCompletedSlotDebt(presentationSession.currentSlide, nextSlide);
     presentationSession.currentSlide = nextSlide;
-    const nextSlot = getCurrentSlot(slotTimings, nextSlide);
+    const nextSlot = getCurrentSlot(
+      getSlotTiming(getActiveSessionSlots(state.slots, presentationSession.skippedSlotIds), presentationSession.slotReductionsMs),
+      nextSlide,
+    );
     if (nextSlot && presentationSession.slotStartedElapsedMs[nextSlot.id] === undefined) {
       presentationSession.slotStartedElapsedMs[nextSlot.id] = getElapsedMs(presentationSession);
     }
@@ -1587,7 +1590,11 @@ function skipSelectedRecoverySlots() {
 
 async function refreshQuizMonitoring(force = false) {
   if (viewMode !== "monitoring" || !presentationSession) return;
-  const entries = getQuizMonitoringEntries(state.slots, presentationSession.currentSlide, presentationSession.slotStartedElapsedMs);
+  const entries = getQuizMonitoringEntries(
+    getActiveSessionSlots(state.slots, presentationSession.skippedSlotIds),
+    presentationSession.currentSlide,
+    presentationSession.slotStartedElapsedMs,
+  );
   const signature = entries.map(({ slot, status }) => `${slot.id}:${status}`).join("|");
   monitoredQuizId = entries.find((entry) => entry.status === "active")?.slot.quiz.id || null;
   if (!force && signature === quizMonitoringSignature) return;
@@ -1694,9 +1701,11 @@ async function renderCurrentSlide() {
 }
 
 function getPresentationSummary() {
-  const slotTimings = getSlotTiming(state.slots, presentationSession.slotReductionsMs);
+  const activeSessionSlots = getActiveSessionSlots(state.slots, presentationSession.skippedSlotIds);
+  const slotTimings = getSlotTiming(activeSessionSlots, presentationSession.slotReductionsMs);
   const plenarySummary = validatePlenary(state.plenary, state.slots);
-  const totalPlannedMs = plenarySummary.durationMinutes * 60 * 1000;
+  const unallocatedDurationMs = plenarySummary.unallocatedMinutes * 60 * 1000;
+  const totalPlannedMs = (slotTimings.at(-1)?.endOffsetMs ?? 0) + unallocatedDurationMs;
   const elapsedMs = getElapsedMs(presentationSession);
   const currentSlot = getCurrentSlot(slotTimings, presentationSession.currentSlide);
   const slotStartedElapsedMs = Number(
@@ -1713,8 +1722,9 @@ function getPresentationSummary() {
   const totalDebtMs =
     presentationSession.accruedDebtMs - recordedCurrentOverrunMs + slotStatus.overrunMs;
   const plannedEnd = new Date();
-  const [endHours, endMinutes] = state.plenary.endTime.split(":").map(Number);
-  plannedEnd.setHours(endHours, endMinutes, 0, 0);
+  const [startHours, startMinutes] = state.plenary.startTime.split(":").map(Number);
+  plannedEnd.setHours(startHours, startMinutes, 0, 0);
+  plannedEnd.setTime(plannedEnd.getTime() + totalPlannedMs);
   const estimatedEnd = new Date(plannedEnd.getTime() + totalDebtMs);
   const scheduleExtended =
     totalDebtMs >= plenarySummary.unallocatedMinutes * 60 * 1000 && totalDebtMs > 0;
@@ -1730,7 +1740,7 @@ function getPresentationSummary() {
     initialAdvanceMs: presentationSession.initialAdvanceMs,
     inheritedSlotOverrunMs: 0,
     slotOverrunsMs: presentationSession.slotOverrunsMs,
-    unallocatedDurationMs: plenarySummary.unallocatedMinutes * 60 * 1000,
+    unallocatedDurationMs,
     plannedEnd,
     estimatedEnd,
     scheduleExtended,
@@ -1773,7 +1783,8 @@ function renderPresentationMetrics() {
   let presentationSummary = getPresentationSummary();
   if (presentationSummary.currentSlot && presentationSummary.slotStatus.overrunMs > 0) {
     applyOverrunStrategy(
-      state.slots.findIndex((slot) => slot.id === presentationSummary.currentSlot.id),
+      getActiveSessionSlots(state.slots, presentationSession.skippedSlotIds)
+        .findIndex((slot) => slot.id === presentationSummary.currentSlot.id),
       presentationSummary.totalDebtMs,
     );
     presentationSummary = getPresentationSummary();
@@ -1895,7 +1906,7 @@ function exportPresentationReport() {
 
   const rows = [
     ["Nom du créneau", "Temps initial", "Temps de dépassement", "Retard au démarrage de la réunion"],
-    ...state.slots.map((slot) => [
+    ...getActiveSessionSlots(state.slots, presentationSession.skippedSlotIds).map((slot) => [
       slot.name,
       formatClock(Number(slot.durationMinutes) * 60 * 1000),
       formatClock(Number(overrunsMs[slot.id] || 0)),
@@ -1924,7 +1935,8 @@ function stopTicking() {
 }
 
 function captureCompletedSlotDebt(previousSlide, nextSlide) {
-  const slotTimings = getSlotTiming(state.slots, presentationSession.slotReductionsMs);
+  const activeSessionSlots = getActiveSessionSlots(state.slots, presentationSession.skippedSlotIds);
+  const slotTimings = getSlotTiming(activeSessionSlots, presentationSession.slotReductionsMs);
   const previousSlot = getCurrentSlot(slotTimings, previousSlide);
   const nextSlot = getCurrentSlot(slotTimings, nextSlide);
 
@@ -1938,13 +1950,14 @@ function captureCompletedSlotDebt(previousSlide, nextSlide) {
   const previousLateMs = Number(presentationSession.slotOverrunsMs[previousSlot.id] || 0);
   presentationSession.slotOverrunsMs[previousSlot.id] = lateMs;
   presentationSession.accruedDebtMs += lateMs - previousLateMs;
-  applyOverrunStrategy(state.slots.findIndex((slot) => slot.id === previousSlot.id));
+  applyOverrunStrategy(activeSessionSlots.findIndex((slot) => slot.id === previousSlot.id));
 }
 
 function applyOverrunStrategy(completedSlotIndex, totalDebtMs = presentationSession.accruedDebtMs) {
   const plenarySummary = validatePlenary(state.plenary, state.slots);
+  const activeSessionSlots = getActiveSessionSlots(state.slots, presentationSession.skippedSlotIds);
   presentationSession.slotReductionsMs = calculateSlotReductions({
-    slots: state.slots,
+    slots: activeSessionSlots,
     completedSlotIndex,
     totalDebtMs,
     unallocatedDurationMs: plenarySummary.unallocatedMinutes * 60 * 1000,
@@ -1991,7 +2004,7 @@ async function enterPresentationMode(overrunStrategy = "next") {
   presentationSession.currentSlide = Math.min(presentationSession.currentSlide || 1, state.pageCount);
   presentationSession.startedAt ??= Date.now();
   const initialSlot = getCurrentSlot(
-    getSlotTiming(state.slots, presentationSession.slotReductionsMs),
+    getSlotTiming(getActiveSessionSlots(state.slots, presentationSession.skippedSlotIds), presentationSession.slotReductionsMs),
     presentationSession.currentSlide,
   );
   if (initialSlot && presentationSession.slotStartedElapsedMs[initialSlot.id] === undefined) {
@@ -2081,7 +2094,7 @@ function nextSlide() {
   }
 
   const nextSlide = getNextAvailableSlide(
-    getSlotTiming(state.slots, presentationSession.slotReductionsMs),
+    state.slots,
     presentationSession.currentSlide,
     state.pageCount,
     presentationSession.skippedSlotIds,
@@ -2090,7 +2103,7 @@ function nextSlide() {
   captureCompletedSlotDebt(presentationSession.currentSlide, nextSlide);
   presentationSession.currentSlide = nextSlide;
   const nextSlot = getCurrentSlot(
-    getSlotTiming(state.slots, presentationSession.slotReductionsMs),
+    getSlotTiming(getActiveSessionSlots(state.slots, presentationSession.skippedSlotIds), presentationSession.slotReductionsMs),
     presentationSession.currentSlide,
   );
   if (nextSlot && presentationSession.slotStartedElapsedMs[nextSlot.id] === undefined) {
@@ -2107,7 +2120,7 @@ function previousSlide() {
   }
 
   const previousSlide = getNextAvailableSlide(
-    getSlotTiming(state.slots, presentationSession.slotReductionsMs),
+    state.slots,
     presentationSession.currentSlide,
     state.pageCount,
     presentationSession.skippedSlotIds,
