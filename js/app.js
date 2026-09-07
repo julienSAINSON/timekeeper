@@ -1158,7 +1158,7 @@ function syncPresentationSession() {
     } catch (error) {
       console.error("Impossible de synchroniser la session.", error);
       const latestSession = await loadPresentationSession(sessionId);
-      if (latestSession) {
+      if (latestSession && activeSessionId === sessionId) {
         applySessionRecord(latestSession);
       }
     }
@@ -1557,13 +1557,23 @@ async function enterPresentationMode(overrunStrategy = "next") {
 }
 
 function leavePresentationMode() {
-  pausePresentation();
+  const isMonitoring = viewMode === "monitoring";
+  if (!isMonitoring) {
+    pausePresentation();
+  }
   stopSessionSubscription?.();
   stopSessionSubscription = null;
   activeSessionId = null;
   activeRoomToken = null;
   sessionVersion = null;
-  localStorage.removeItem(LOCAL_SESSION_KEY);
+  if (!isMonitoring) {
+    localStorage.removeItem(LOCAL_SESSION_KEY);
+  }
+  viewMode = "config";
+  const configurationUrl = new URL(window.location.href);
+  configurationUrl.searchParams.delete("view");
+  configurationUrl.searchParams.delete("sessionId");
+  window.history.replaceState({}, "", configurationUrl.href);
   switchView(false);
   stopTicking();
   presentationSession = null;

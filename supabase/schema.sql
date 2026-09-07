@@ -293,3 +293,5 @@ revoke all on function public.get_owned_public_session_room(uuid) from public;
 grant execute on function public.create_public_session_room(uuid, text) to authenticated;
 grant execute on function public.get_public_session_room(text) to anon, authenticated;
 grant execute on function public.get_owned_public_session_room(uuid) to authenticated;
+
+notify pgrst, 'reload schema';

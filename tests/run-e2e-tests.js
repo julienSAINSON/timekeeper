@@ -313,6 +313,24 @@ test("Navigue depuis Monitoring avec une session locale", async () => {
       () => monitoringDocument.querySelector("#slideCounter").textContent === "Slide 2 / 3",
       "Le bouton Suivante de Monitoring n'a pas avancé la slide.",
     );
+    monitoringDocument.querySelector("#exitPresentationBtn").click();
+    await waitFor(
+      () => monitoringDocument.querySelector("#configView").classList.contains("active"),
+      "Quitter doit ramener Monitoring à la configuration.",
+    );
+    assert(
+      !monitoringDocument.querySelector("#presentationView").classList.contains("active"),
+      "Quitter doit fermer la vue Monitoring.",
+    );
+    assert(
+      !monitoringFrame.contentWindow.location.search.includes("view=monitoring"),
+      "Quitter doit retirer le mode Monitoring de l'URL.",
+    );
+    const savedSession = JSON.parse(monitoringFrame.contentWindow.localStorage.getItem(LOCAL_SESSION_KEY));
+    assert(
+      savedSession?.session?.isRunning && !savedSession.session.isPaused,
+      "Quitter Monitoring ne doit ni arrêter ni supprimer la session locale active.",
+    );
   } finally {
     monitoringFrame?.remove();
     if (previousSession === null) {
