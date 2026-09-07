@@ -10,6 +10,9 @@
   --primary: #003b5c;
   --accent: #ffcd00;
   --accent-strong: #e7ad00;
+  --accent-text: #6f5900;
+  --disabled-bg: #d8e5e9;
+  --disabled-text: #385766;
   --warning: #e87900;
   --danger: #f15b5b;
   --shadow: 0 16px 40px rgba(0, 59, 92, 0.13);
@@ -86,6 +89,19 @@ select {
   border-radius: 6px;
   padding: 12px;
   color: var(--text);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 3px solid rgba(0, 122, 120, 0.55);
+  outline-offset: 2px;
 }
 
 .question-feedback {
@@ -168,7 +184,7 @@ select {
 }
 
 .quiz-monitoring-item.is-active .quiz-monitoring-status {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .quiz-comprehension-empty,
@@ -187,7 +203,7 @@ select {
 
 .quiz-comprehension-signal.is-mixed,
 .quiz-comprehension-signal.is-poor {
-  color: #a65400;
+  color: var(--accent-text);
 }
 
 .quiz-response-option {
@@ -200,7 +216,7 @@ select {
 }
 
 .quiz-response-option strong {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .quiz-response-option span:last-child {
@@ -330,7 +346,7 @@ p {
   text-transform: uppercase;
   letter-spacing: 0.12em;
   font-size: 0.75rem;
-  color: var(--accent);
+  color: var(--accent-text);
   margin-bottom: 6px;
 }
 
@@ -1151,7 +1167,10 @@ kbd {
 }
 
 button:disabled {
-  opacity: 0.5;
+  opacity: 1;
+  background: var(--disabled-bg);
+  color: var(--disabled-text);
+  border-color: rgba(0, 59, 92, 0.3);
   cursor: not-allowed;
 }
 
@@ -1299,15 +1318,15 @@ body.is-presenting:not(.is-monitoring) #pdfCanvas {
 }
 
 .metric-duo .schedule-extended {
-  color: #ffdede;
+  color: #8f1d16;
 }
 
 .metric-duo .schedule-extended .metric-label {
-  color: #ff9d9d;
+  color: #8f1d16;
 }
 
 .metric-duo .schedule-extended strong {
-  color: var(--danger);
+  color: #b42318;
   font-size: 1.7rem;
 }
 
@@ -1382,7 +1401,7 @@ body.is-presenting:not(.is-monitoring) #pdfCanvas {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: rgba(255, 255, 255, 0.82);
+  color: var(--muted);
 }
 
 .timeline-slot.completed {
@@ -1446,6 +1465,7 @@ body.is-presenting:not(.is-monitoring) #pdfCanvas {
   border: 1px solid rgba(119, 224, 181, 0.3);
   border-radius: 999px;
   padding: 4px 10px;
+  color: #ffffff;
   font-size: 0.85rem;
 }
 
@@ -1675,7 +1695,7 @@ body.is-presenting .slide-side-info-next {
 }
 
 .slide-side-info-label {
-  color: #ffdf57;
+  color: #ffffff;
   font-size: 0.8rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -1692,7 +1712,7 @@ body.is-presenting .slide-side-info-next {
 }
 
 .slide-side-info-status {
-  color: #ffdf57;
+  color: #ffffff;
   font-size: 1rem;
   font-weight: 700;
 }
