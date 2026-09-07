@@ -44,6 +44,20 @@ async function loadApplication() {
   return applicationFrame.contentDocument;
 }
 
+async function loadMonitoringApplication() {
+  const monitoringFrame = document.createElement("iframe");
+  monitoringFrame.hidden = true;
+  document.body.appendChild(monitoringFrame);
+  const loaded = new Promise((resolve) => monitoringFrame.addEventListener("load", resolve, { once: true }));
+  monitoringFrame.src = `../index.html?view=monitoring&e2e=${Date.now()}`;
+  await loaded;
+  await waitFor(
+    () => monitoringFrame.contentDocument?.querySelector("#presentationView.active"),
+    "La vue Monitoring ne s'est pas initialisée.",
+  );
+  return monitoringFrame;
+}
+
 function updateInput(documentToTest, selector, value) {
   const input = documentToTest.querySelector(selector);
   input.value = value;
@@ -108,17 +122,12 @@ test("Importe la fixture PDF et exécute le parcours de présentation", async ()
       "Le PDF n'a pas été rendu dans le canvas.",
     );
 
-    documentToTest.querySelector("#togglePresentationDetails").click();
-    await waitFor(
-      () => documentToTest.querySelector("#presentationView").classList.contains("presentation-details-open"),
-      "Les détails de la timeline ne se sont pas ouverts.",
-    );
     const slideCounter = documentToTest.querySelector("#slideCounter");
     const counterBounds = slideCounter.getBoundingClientRect();
     const timelineBounds = documentToTest.querySelector(".timeline-panel").getBoundingClientRect();
     assert(
       counterBounds.bottom <= timelineBounds.top,
-      "Le numéro de slide doit rester visible au-dessus de la timeline agrandie.",
+      "Le numéro de slide doit rester visible au-dessus de la timeline Monitoring.",
     );
 
     documentToTest.querySelector("#nextSlideBtn").click();
@@ -228,6 +237,72 @@ test("Crée les types de créneaux et une séquence interactive avec le wizard",
     equal(slots[3].durationMinutes, 1);
     assert(documentToTest.querySelector("#validationList").textContent.includes("Slides non couvertes: 6"), "La validation de couverture existante doit rester active.");
   } finally {
+    if (previousState === null) {
+      localStorage.removeItem(STORAGE_KEY);
+    } else {
+      localStorage.setItem(STORAGE_KEY, previousState);
+    }
+    await loadApplication();
+  }
+});
+
+test("Sépare Présentation et Monitoring avec une session locale synchronisée", async () => {
+  const previousState = localStorage.getItem(STORAGE_KEY);
+  let monitoringFrame = null;
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    const presentationDocument = await loadApplication();
+    await importFixture(presentationDocument);
+    updateInput(presentationDocument, "#plenaryStart", "09:00");
+    updateInput(presentationDocument, "#plenaryDurationInput", "30");
+    presentationDocument.querySelector("#startPresentationBtn").click();
+    presentationDocument.querySelector('#strategyDialog button[value="confirm"]').click();
+    await waitFor(
+      () => presentationDocument.querySelector("#presentationView").classList.contains("active"),
+      "La vue Présentation ne s'est pas lancée.",
+    );
+    assert(
+      presentationDocument.defaultView.location.search === "?view=presentation",
+      "L'onglet source doit devenir la vue Présentation.",
+    );
+    const presentationWindow = presentationDocument.defaultView;
+    assert(
+      presentationWindow.getComputedStyle(presentationDocument.querySelector(".timeline-panel")).display === "none",
+      "La timeline ne doit pas être visible dans Présentation.",
+    );
+
+    monitoringFrame = await loadMonitoringApplication();
+    const monitoringDocument = monitoringFrame.contentDocument;
+    await waitFor(
+      () => monitoringDocument.querySelector("#globalTimer").textContent !== "00:00 / 00:00",
+      "Monitoring n'a pas reçu la session active.",
+    );
+    assert(
+      monitoringDocument.querySelector("#slideCounter").textContent === "Slide 1 / 6",
+      "Monitoring doit recevoir le nombre de slides du projet de Présentation.",
+    );
+    const monitoringWindow = monitoringDocument.defaultView;
+    assert(
+      monitoringWindow.getComputedStyle(monitoringDocument.querySelector(".timeline-panel")).display !== "none",
+      "La timeline doit être visible dans Monitoring.",
+    );
+    assert(
+      monitoringWindow.getComputedStyle(monitoringDocument.querySelector(".presentation-toolbar")).display !== "none",
+      "Les contrôles doivent être visibles dans Monitoring.",
+    );
+
+    presentationDocument.querySelector("#pdfStage").click();
+    await waitFor(
+      () => monitoringDocument.querySelector("#slideCounter").textContent === "Slide 2 / 6",
+      "Monitoring n'a pas reçu la navigation de Présentation.",
+    );
+    monitoringDocument.querySelector("#nextSlideBtn").click();
+    await waitFor(
+      () => presentationDocument.querySelector("#slideCounter").textContent === "Slide 3 / 6",
+      "Présentation n'a pas reçu la navigation de Monitoring.",
+    );
+  } finally {
+    monitoringFrame?.remove();
     if (previousState === null) {
       localStorage.removeItem(STORAGE_KEY);
     } else {

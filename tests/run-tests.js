@@ -6,7 +6,7 @@ import {
   saveState,
   validatePlenary,
   validateSlots,
-} from "../js/config.js";
+} from "../js/config.js?v=presentation-monitoring-v1";
 import { createSessionState } from "../js/session.js";
 import {
   formatClock,

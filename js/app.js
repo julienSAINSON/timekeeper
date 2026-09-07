@@ -7,7 +7,7 @@ import {
   getPlenaryEndTime,
   validatePlenary,
   validateSlots,
-} from "./config.js";
+} from "./config.js?v=presentation-monitoring-v1";
 import { getPdfDocument, loadPdfDocument, renderPage } from "./pdfViewer.js";
 import {
   formatClock,
@@ -40,6 +40,10 @@ import {
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./supabaseConfig.js?v=access-v1";
 
 const state = loadState();
+let viewMode = new URLSearchParams(window.location.search).get("view") || "config";
+const sessionChannel = typeof BroadcastChannel === "undefined"
+  ? null
+  : new BroadcastChannel("safe-timekeeper-presentation-session-v1");
 let tickHandle = null;
 let fullscreenProgressAnimationHandle = null;
 let currentPdfBuffer = null;
@@ -958,7 +962,110 @@ function moveSlot(slotId, direction) {
 function switchView(isPresentation) {
   elements.configView.classList.toggle("active", !isPresentation);
   elements.presentationView.classList.toggle("active", isPresentation);
+  elements.presentationView.classList.toggle("monitoring-view", isPresentation && viewMode === "monitoring");
   document.body.classList.toggle("is-presenting", isPresentation);
+  document.body.classList.toggle("is-monitoring", isPresentation && viewMode === "monitoring");
+}
+
+function syncPresentationSession() {
+  if (presentationSession && sessionChannel) {
+    sessionChannel.postMessage({
+      type: "session-update",
+      session: presentationSession,
+      project: state,
+      pdfBuffer: currentPdfBuffer,
+    });
+  }
+}
+
+function openMonitoringView() {
+  const monitoringUrl = new URL(window.location.href);
+  monitoringUrl.searchParams.set("view", "monitoring");
+  window.open(monitoringUrl.href, `timekeeper-monitoring-${crypto.randomUUID()}`);
+}
+
+function applyPresentationProject(project, pdfBuffer) {
+  if (project) {
+    Object.assign(state, normalizeState(project));
+  }
+  if (pdfBuffer) {
+    currentPdfBuffer = new Uint8Array(pdfBuffer);
+  }
+}
+
+function activateMonitoringSession(session, project, pdfBuffer) {
+  applyPresentationProject(project, pdfBuffer);
+  presentationSession = session;
+  switchView(true);
+  setPresentationDetailsCollapsed(false);
+  renderPresentationMetrics();
+  startTicking();
+}
+
+async function activatePresentationSession(session, project, pdfBuffer) {
+  applyPresentationProject(project, pdfBuffer);
+  presentationSession = session;
+  showApplication("presentation");
+  switchView(true);
+  setPresentationDetailsCollapsed(true);
+  await ensurePdfLoaded();
+  await renderCurrentSlide();
+  renderPresentationMetrics();
+  startTicking();
+  sessionChannel?.postMessage({ type: "presentation-ready", sessionId: session.id });
+}
+
+function attachSessionChannel() {
+  if (!sessionChannel) {
+    return;
+  }
+
+  sessionChannel.addEventListener("message", (event) => {
+    const { type, session, project, pdfBuffer, sessionId } = event.data || {};
+    if (type === "session-request" && presentationSession && currentPdfBuffer) {
+      sessionChannel.postMessage({
+        type: "session-update",
+        session: presentationSession,
+        project: state,
+        pdfBuffer: currentPdfBuffer,
+      });
+    } else if (
+      type === "session-update" &&
+      session &&
+      (viewMode === "monitoring" || presentationSession?.id === session.id)
+    ) {
+      if (presentationSession) {
+        if (viewMode === "monitoring") {
+          applyPresentationProject(project, pdfBuffer);
+        }
+        Object.assign(presentationSession, session);
+        if (viewMode === "presentation") {
+          renderCurrentSlide().catch((error) => console.error("Impossible de rendre la slide synchronisée.", error));
+        }
+        renderPresentationMetrics();
+      } else {
+        if (viewMode === "presentation") {
+          activatePresentationSession(session, project, pdfBuffer).catch((error) => console.error(error));
+        } else {
+          activateMonitoringSession(session, project, pdfBuffer);
+        }
+      }
+    }
+  });
+
+  if (viewMode === "monitoring" || viewMode === "presentation") {
+    sessionChannel.postMessage({ type: "session-request" });
+  }
+
+  if (viewMode === "presentation") {
+    const sessionRequestHandle = window.setInterval(() => {
+      if (presentationSession) {
+        window.clearInterval(sessionRequestHandle);
+      } else {
+        sessionChannel.postMessage({ type: "session-request" });
+      }
+    }, 500);
+  }
 }
 
 function setPresentationDetailsCollapsed(isCollapsed) {
@@ -988,15 +1095,17 @@ async function ensurePdfLoaded() {
   }
 
   elements.pdfLoading.hidden = false;
-  const pdf = await loadPdfDocument({ data: currentPdfBuffer });
+  const pdf = await loadPdfDocument({ data: currentPdfBuffer.slice() });
   elements.pdfLoading.hidden = true;
   return pdf;
 }
 
 async function renderCurrentSlide() {
-  if (!currentPdfBuffer) {
+  if (!presentationSession || !currentPdfBuffer) {
     return;
   }
+
+  const slideToRender = presentationSession.currentSlide;
 
   const sidePanelWidth = Math.max(
     elements.sideCurrentSlotPanel.getBoundingClientRect().width,
@@ -1014,7 +1123,7 @@ async function renderCurrentSlide() {
   elements.pdfLoading.hidden = false;
   try {
     await renderPage(
-      presentationSession.currentSlide,
+      slideToRender,
       elements.pdfCanvas,
       availableWidth,
       elements.pdfStage.clientHeight,
@@ -1100,6 +1209,7 @@ function renderPresentationMetrics() {
     return;
   }
 
+  elements.slideCounter.textContent = `Slide ${presentationSession.currentSlide} / ${state.pageCount}`;
   let presentationSummary = getPresentationSummary();
   if (presentationSummary.currentSlot && presentationSummary.slotStatus.overrunMs > 0) {
     applyOverrunStrategy(
@@ -1269,7 +1379,18 @@ function applyOverrunStrategy(completedSlotIndex, totalDebtMs = presentationSess
 }
 
 async function enterPresentationMode(overrunStrategy = "next") {
-  await ensurePdfLoaded();
+  if (viewMode === "config") {
+    viewMode = "presentation";
+    window.history.replaceState({}, "", `${window.location.pathname}?view=presentation`);
+  }
+  switchView(true);
+  setPresentationDetailsCollapsed(viewMode === "presentation");
+  try {
+    await ensurePdfLoaded();
+  } catch (error) {
+    switchView(false);
+    throw error;
+  }
   presentationSession = createSessionState(state.slots[0]?.startSlide ?? 1);
   presentationSession.overrunStrategy = overrunStrategy;
 
@@ -1305,8 +1426,7 @@ async function enterPresentationMode(overrunStrategy = "next") {
   presentationSession.totalPausedMs = presentationSession.totalPausedMs || 0;
   elements.pauseBtn.disabled = false;
   elements.resumeBtn.disabled = true;
-  switchView(true);
-  setPresentationDetailsCollapsed(true);
+  syncPresentationSession();
   renderPresentationMetrics();
   await waitForNextFrame();
   await renderCurrentSlide();
@@ -1337,6 +1457,7 @@ function nextSlide() {
   }
   renderCurrentSlide();
   renderPresentationMetrics();
+  syncPresentationSession();
 }
 
 function previousSlide() {
@@ -1347,6 +1468,7 @@ function previousSlide() {
   presentationSession.currentSlide -= 1;
   renderCurrentSlide();
   renderPresentationMetrics();
+  syncPresentationSession();
 }
 
 function pausePresentation() {
@@ -1358,6 +1480,7 @@ function pausePresentation() {
   presentationSession.pausedAt = Date.now();
   elements.pauseBtn.disabled = true;
   elements.resumeBtn.disabled = false;
+  syncPresentationSession();
 }
 
 function resumePresentation() {
@@ -1370,6 +1493,7 @@ function resumePresentation() {
   presentationSession.pausedAt = null;
   elements.pauseBtn.disabled = false;
   elements.resumeBtn.disabled = true;
+  syncPresentationSession();
 }
 
 function resetPresentation() {
@@ -1424,13 +1548,14 @@ async function handlePdfImport(event) {
       return;
     }
     const pdfBuffer = new Uint8Array(buffer);
+    const pdfSourceBuffer = pdfBuffer.slice();
 
     setImportProgress(72, "Analyse du document PDF...");
     const pdf = await loadPdfDocument({ data: pdfBuffer });
     if (requestId !== pdfImportRequestId) {
       return;
     }
-    currentPdfBuffer = pdfBuffer;
+    currentPdfBuffer = pdfSourceBuffer;
     state.pdfName = file.name;
     state.pageCount = pdf.numPages;
     presentationSession = null;
@@ -1574,7 +1699,9 @@ function attachEvents() {
       return;
     }
     const selectedStrategy = document.querySelector('input[name="overrunStrategy"]:checked');
-    enterPresentationMode(selectedStrategy?.value || "next").catch((error) => {
+    const startPresentation = enterPresentationMode(selectedStrategy?.value || "next");
+    openMonitoringView();
+    startPresentation.catch((error) => {
       console.error(error);
       window.alert(
         error.message || "Impossible de démarrer la présentation. Vérifiez le chargement du PDF.",
@@ -1705,6 +1832,7 @@ function attachEvents() {
 
 async function bootstrap() {
   attachEvents();
+  attachSessionChannel();
   renderConfiguration();
   hasUnsavedChanges = false;
   updateSaveButton();
@@ -1726,7 +1854,11 @@ async function bootstrap() {
   } catch (error) {
     console.error("Impossible de restaurer la session Supabase.", error);
   }
-  if (user) {
+  if (viewMode === "monitoring" || viewMode === "presentation") {
+    showApplication(viewMode);
+    switchView(true);
+    setPresentationDetailsCollapsed(viewMode === "presentation");
+  } else if (user) {
     showApplication("authenticated", user);
   } else {
     showAccessScreen();

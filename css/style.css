@@ -770,6 +770,57 @@ button:disabled {
   gap: 20px;
 }
 
+#presentationView.active:not(.monitoring-view) .timeline-panel {
+  display: none !important;
+}
+
+body.is-monitoring .presentation-stage,
+body.is-monitoring .fullscreen-slot-progress {
+  display: none;
+}
+
+body.is-monitoring .presentation-view.active {
+  display: block;
+}
+
+body.is-monitoring .timeline-panel {
+  min-height: 100vh;
+}
+
+body.is-presenting:not(.is-monitoring) .app-shell,
+body.is-presenting:not(.is-monitoring) main,
+body.is-presenting:not(.is-monitoring) .presentation-view.active,
+body.is-presenting:not(.is-monitoring) .presentation-stage,
+body.is-presenting:not(.is-monitoring) .pdf-stage {
+  width: 100%;
+  min-height: 100vh;
+  height: 100vh;
+}
+
+body.is-presenting:not(.is-monitoring) .topbar {
+  display: none;
+}
+
+body.is-presenting:not(.is-monitoring) main {
+  padding: 0;
+  max-width: none;
+}
+
+body.is-presenting:not(.is-monitoring) .presentation-view.active {
+  gap: 0;
+}
+
+body.is-presenting:not(.is-monitoring) .pdf-stage {
+  border: 0;
+  border-radius: 0;
+}
+
+body.is-presenting:not(.is-monitoring) #pdfCanvas {
+  width: 100%;
+  height: 100%;
+  max-height: 100vh;
+}
+
 .presentation-stage {
   min-height: 0;
 }
@@ -1115,13 +1166,13 @@ body.is-presenting .presentation-view.active {
   min-height: 100dvh;
 }
 
-body.is-presenting .presentation-stage {
+body.is-presenting.is-monitoring .presentation-stage {
   display: flex;
   height: calc(100dvh - var(--presentation-timeline-height));
   padding-bottom: 0;
 }
 
-:fullscreen body.is-presenting .presentation-stage {
+:fullscreen body.is-presenting.is-monitoring .presentation-stage {
   height: 100dvh;
 }
 
