@@ -435,6 +435,85 @@ test("Navigue depuis Monitoring avec une session locale", async () => {
   }
 });
 
+test("Recommande une récupération sans l'appliquer automatiquement", async () => {
+  const previousSession = localStorage.getItem(LOCAL_SESSION_KEY);
+  let monitoringFrame = null;
+  try {
+    localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify({
+      project: {
+        pageCount: 4,
+        slots: [
+          { id: "opening", name: "Ouverture", type: "presentation", startSlide: 1, endSlide: 1, durationMinutes: 1, optional: false },
+          { id: "question", name: "Questions", type: "question", startSlide: 2, endSlide: 2, durationMinutes: 2, optional: true },
+          { id: "quiz", name: "Quiz", type: "quiz", startSlide: 3, endSlide: 3, durationMinutes: 3, optional: true },
+          { id: "closing", name: "Conclusion", type: "presentation", startSlide: 4, endSlide: 4, durationMinutes: 1, optional: false },
+        ],
+        plenary: { startTime: "09:00", durationMinutes: 7 },
+      },
+      session: {
+        id: "local-recovery-session",
+        status: "active",
+        version: 1,
+        isRunning: true,
+        isPaused: false,
+        currentSlide: 1,
+        startedAt: Date.now() - 240000,
+        pausedAt: null,
+        totalPausedMs: 0,
+        accruedDebtMs: 0,
+        initialDelayMs: 0,
+        initialAdvanceMs: 0,
+        slotOverrunsMs: {},
+        slotReductionsMs: {},
+        slotStartedElapsedMs: { opening: 0 },
+        skippedSlotIds: [],
+        overrunStrategy: "next",
+      },
+    }));
+    monitoringFrame = await loadMonitoringApplication();
+    let monitoringDocument = monitoringFrame.contentDocument;
+    await waitFor(
+      () => !monitoringDocument.querySelector("#recoveryPanel").hidden,
+      "La recommandation doit apparaître lorsque la session est en retard.",
+    );
+    assert(monitoringDocument.querySelector("#recoveryRecommendation").textContent.includes("05:00"), "Le temps récupérable doit inclure les deux créneaux futurs.");
+    assert(monitoringDocument.querySelector("#recoveryRecommendation").textContent.includes("Questions + Quiz"), "La suggestion doit proposer la combinaison minimale disponible.");
+    assert([...monitoringDocument.querySelectorAll("#recoverySlots input")].every((input) => !input.checked), "La suggestion ne doit sélectionner aucun créneau automatiquement.");
+
+    const question = monitoringDocument.querySelector('#recoverySlots input[value="question"]');
+    question.checked = true;
+    question.dispatchEvent(new Event("change", { bubbles: true }));
+    await waitFor(
+      () => monitoringDocument.querySelector("#recoverySummary").textContent.includes("Récupération : 02:00")
+        && monitoringDocument.querySelector("#recoverySummary").textContent.includes("Retard restant : 02:00"),
+      "La sélection manuelle doit recalculer la récupération et le retard restant.",
+    );
+    monitoringDocument.querySelector("#skipRecoverySlotsBtn").click();
+    await waitFor(
+      () => monitoringDocument.querySelectorAll("#timelineTrack .timeline-slot").length === 3,
+      "La confirmation doit retirer le créneau sélectionné de la timeline active.",
+    );
+    const saved = JSON.parse(monitoringFrame.contentWindow.localStorage.getItem(LOCAL_SESSION_KEY));
+    equal(saved.session.skippedSlotIds.join(","), "question");
+    equal(saved.project.slots.length, 4);
+    equal(saved.project.slots[1].name, "Questions");
+    monitoringFrame.remove();
+    monitoringFrame = await loadMonitoringApplication();
+    monitoringDocument = monitoringFrame.contentDocument;
+    await waitFor(
+      () => monitoringDocument.querySelectorAll("#timelineTrack .timeline-slot").length === 3,
+      "Le rechargement doit conserver la timeline adaptée.",
+    );
+  } finally {
+    monitoringFrame?.remove();
+    if (previousSession === null) {
+      localStorage.removeItem(LOCAL_SESSION_KEY);
+    } else {
+      localStorage.setItem(LOCAL_SESSION_KEY, previousSession);
+    }
+  }
+});
+
 test("Ouvre Monitoring et synchronise sa navigation avec Présentation", async () => {
   const previousState = localStorage.getItem(STORAGE_KEY);
   const previousSession = localStorage.getItem(LOCAL_SESSION_KEY);

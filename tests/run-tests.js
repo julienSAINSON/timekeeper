@@ -41,11 +41,12 @@ import {
   getFutureOptionalSlots,
   getNextAvailableSlide,
   getPlannedElapsedMs,
+  getRecoveryRecommendation,
   getRecoverySummary,
   getSessionDelayMs,
   getSlotStatus,
   getSlotTiming,
-} from "../js/timer.js?v=active-session-timeline-v1";
+} from "../js/timer.js?v=recovery-recommendation-v1";
 import { calculateSlotReductions } from "../js/overrun.js";
 import { renderTimeline } from "../js/timeline.js";
 
@@ -547,6 +548,58 @@ test("Calcule la récupération sélectionnée sans modifier les créneaux", () 
   equal(recovery.remainingDelayMs, 0);
   equal(first.durationMinutes, 3);
   equal(second.durationMinutes, 2);
+});
+
+test("Recommande le minimum de créneaux avec la récupération la plus proche", () => {
+  const optionalSlots = [
+    { ...slot("question", 3, 3, 2), optional: true },
+    { ...slot("quiz", 4, 4, 3), optional: true },
+    { ...slot("example", 5, 5, 5), optional: true },
+  ];
+  const recommendation = getRecoveryRecommendation(240000, optionalSlots);
+  equal(recommendation.recoverableMs, 600000);
+  equal(recommendation.suggestedSlots.map((item) => item.id).join(","), "example");
+  equal(recommendation.fullyRecovers, true);
+  equal(optionalSlots.map((item) => item.id).join(","), "question,quiz,example");
+});
+
+test("Départage les combinaisons par la plus petite durée pour un même nombre de créneaux", () => {
+  const optionalSlots = [
+    { ...slot("first", 3, 3, 2), optional: true },
+    { ...slot("second", 4, 4, 3), optional: true },
+    { ...slot("third", 5, 5, 2), optional: true },
+  ];
+  const recommendation = getRecoveryRecommendation(240000, optionalSlots);
+  equal(recommendation.suggestedSlots.map((item) => item.id).join(","), "first,third");
+  equal(getRecoverySummary(240000, recommendation.suggestedSlots).recoveryMs, 240000);
+});
+
+test("Ne suggère rien lorsque le retard est nul ou qu'aucun créneau n'est disponible", () => {
+  const optionalSlots = [{ ...slot("optional", 3, 3, 2), optional: true }];
+  equal(getRecoveryRecommendation(0, optionalSlots).suggestedSlots.length, 0);
+  equal(getRecoveryRecommendation(60000, []).suggestedSlots.length, 0);
+});
+
+test("Propose le maximum récupérable quand le retard dépasse les créneaux disponibles", () => {
+  const optionalSlots = [
+    { ...slot("question", 3, 3, 2), optional: true },
+    { ...slot("quiz", 4, 4, 3), optional: true },
+  ];
+  const recommendation = getRecoveryRecommendation(360000, optionalSlots);
+  equal(recommendation.suggestedSlots.map((item) => item.id).join(","), "question,quiz");
+  equal(recommendation.fullyRecovers, false);
+  equal(recommendation.recoverableMs, 300000);
+});
+
+test("Ignore les données de compréhension Quiz pour la recommandation", () => {
+  const quizSlot = {
+    ...slot("quiz", 3, 3, 3),
+    optional: true,
+    quiz: { correctRate: 0, totalResponses: 999, classification: "insufficient" },
+  };
+  const recommendation = getRecoveryRecommendation(180000, [quizSlot]);
+  equal(recommendation.suggestedSlots[0].id, "quiz");
+  equal(recommendation.recoverableMs, 180000);
 });
 
 test("Dérive la timeline active sans modifier le planning du projet", () => {

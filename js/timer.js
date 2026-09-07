@@ -76,6 +76,45 @@ export function getRecoverySummary(delayMs, selectedSlots) {
   return { recoveryMs, remainingDelayMs: Math.max(0, delayMs - recoveryMs) };
 }
 
+export function getRecoveryRecommendation(delayMs, selectableSlots) {
+  const slots = Array.isArray(selectableSlots) ? selectableSlots : [];
+  const recoverableMs = getRecoverySummary(0, slots).recoveryMs;
+  if (delayMs <= 0 || !slots.length) {
+    return { recoverableMs, suggestedSlots: [], fullyRecovers: false };
+  }
+
+  for (let slotCount = 1; slotCount <= slots.length; slotCount += 1) {
+    let bestSuggestion = null;
+
+    function visit(startIndex, selectedSlots, selectedRecoveryMs) {
+      if (selectedSlots.length === slotCount) {
+        if (selectedRecoveryMs >= delayMs
+          && (!bestSuggestion || selectedRecoveryMs < bestSuggestion.recoveryMs)) {
+          bestSuggestion = { slots: selectedSlots, recoveryMs: selectedRecoveryMs };
+        }
+        return;
+      }
+
+      for (let index = startIndex; index <= slots.length - (slotCount - selectedSlots.length); index += 1) {
+        const slot = slots[index];
+        const durationMs = Math.max(0, Number(slot.durationMinutes) || 0) * 60 * 1000;
+        visit(index + 1, [...selectedSlots, slot], selectedRecoveryMs + durationMs);
+      }
+    }
+
+    visit(0, [], 0);
+    if (bestSuggestion) {
+      return {
+        recoverableMs,
+        suggestedSlots: bestSuggestion.slots,
+        fullyRecovers: true,
+      };
+    }
+  }
+
+  return { recoverableMs, suggestedSlots: slots, fullyRecovers: false };
+}
+
 export function getNextAvailableSlide(slots, currentSlide, pageCount, skippedSlotIds, direction = 1) {
   const skipped = new Set(skippedSlotIds);
   let slide = currentSlide + direction;

@@ -17,11 +17,12 @@ import {
   getElapsedMs,
   getFutureOptionalSlots,
   getNextAvailableSlide,
+  getRecoveryRecommendation,
   getRecoverySummary,
   getSessionDelayMs,
   getSlotStatus,
   getSlotTiming,
-} from "./timer.js?v=active-session-timeline-v1";
+} from "./timer.js?v=recovery-recommendation-v1";
 import { createSessionState, normalizeSessionState } from "./session.js?v=optional-slot-recovery-v1";
 import {
   generateRoomToken,
@@ -284,6 +285,7 @@ const elements = {
   roomLink: document.querySelector("#roomLink"),
   recoveryPanel: document.querySelector("#recoveryPanel"),
   recoveryDelay: document.querySelector("#recoveryDelay"),
+  recoveryRecommendation: document.querySelector("#recoveryRecommendation"),
   recoverySlots: document.querySelector("#recoverySlots"),
   recoverySummary: document.querySelector("#recoverySummary"),
   keepRecoveryPlanBtn: document.querySelector("#keepRecoveryPlanBtn"),
@@ -1526,7 +1528,15 @@ function renderRecoveryProposal(delayMs) {
   });
   const selectedSlots = futureOptionalSlots.filter((slot) => selectedRecoverySlotIds.has(slot.id));
   const recovery = getRecoverySummary(delayMs, selectedSlots);
+  const recommendation = getRecoveryRecommendation(delayMs, futureOptionalSlots);
   elements.recoveryDelay.textContent = `Retard actuel : +${formatClock(delayMs)}`;
+  if (recommendation.fullyRecovers) {
+    const suggestedNames = recommendation.suggestedSlots.map((slot) => slot.name).join(" + ");
+    const suggestedRecovery = getRecoverySummary(delayMs, recommendation.suggestedSlots);
+    elements.recoveryRecommendation.textContent = `Vous pouvez récupérer jusqu'à ${formatClock(recommendation.recoverableMs)}. Suggestion : supprimer ${suggestedNames} (${formatClock(suggestedRecovery.recoveryMs)}).`;
+  } else {
+    elements.recoveryRecommendation.textContent = `Vous pouvez récupérer jusqu'à ${formatClock(recommendation.recoverableMs)}. Ce total ne couvre pas entièrement le retard actuel.`;
+  }
   elements.recoverySlots.replaceChildren(...futureOptionalSlots.map((slot) => {
     const label = document.createElement("label");
     label.className = "recovery-slot";
