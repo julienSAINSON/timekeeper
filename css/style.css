@@ -1070,6 +1070,36 @@ kbd {
   color: #385766;
 }
 
+#questionsPanel,
+#quizResponsesPanel,
+#selectedQuestion {
+  border-color: rgba(0, 59, 92, 0.42);
+  background: #ffffff;
+  box-shadow: inset 4px 0 0 var(--accent);
+  color: var(--text);
+}
+
+#questionsPanel .eyebrow,
+#quizResponsesPanel .eyebrow,
+#selectedQuestion .eyebrow,
+#questionsPanel h3,
+#quizResponsesPanel h3,
+#selectedQuestion strong,
+#selectedQuestion p,
+#questionsPanel .question-status,
+#quizResponsesPanel .quiz-monitoring-status,
+#quizResponsesPanel .quiz-responses-question {
+  color: var(--text);
+}
+
+#questionsPanel .question-item small,
+#selectedQuestion > p:last-of-type,
+#quizResponsesPanel .quiz-responses-count,
+#quizResponsesPanel .quiz-response-option span:last-child,
+#quizResponsesPanel .quiz-comprehension-empty {
+  color: #385766;
+}
+
 .questions-list {
   display: grid;
   max-height: 240px;
@@ -1118,7 +1148,7 @@ kbd {
 }
 
 .question-item.is-selected {
-  border-color: var(--accent-strong);
+  border-color: rgba(0, 59, 92, 0.5);
   box-shadow: inset 3px 0 var(--accent);
 }
 
