@@ -1,5 +1,5 @@
 export const QUESTION_MAX_LENGTH = 500;
-export const QUESTION_STATUSES = ["pending", "answered", "dismissed"];
+export const QUESTION_STATUSES = ["pending", "answered", "dismissed", "cancelled"];
 
 export function normalizeQuestionText(value) {
   return String(value || "").trim();
@@ -29,6 +29,7 @@ export function getQuestionStatusLabel(status) {
     pending: "En attente",
     answered: "Traitée",
     dismissed: "Écartée",
+    cancelled: "Annulée",
   }[status] || "Inconnu";
 }
 

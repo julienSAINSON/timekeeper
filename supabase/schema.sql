@@ -297,10 +297,16 @@ grant execute on function public.get_owned_public_session_room(uuid) to authenti
 create table if not exists public.tk_session_questions (
   id uuid primary key default gen_random_uuid(),
   session_id uuid not null references public.tk_presentation_sessions(id) on delete cascade,
+  participant_id uuid,
   text text not null check (char_length(text) between 1 and 500 and text = btrim(text)),
-  status text not null default 'pending' check (status in ('pending', 'answered', 'dismissed')),
+  status text not null default 'pending' check (status in ('pending', 'answered', 'dismissed', 'cancelled')),
   created_at timestamptz not null default now()
 );
+
+alter table public.tk_session_questions add column if not exists participant_id uuid;
+alter table public.tk_session_questions drop constraint if exists tk_session_questions_status_check;
+alter table public.tk_session_questions add constraint tk_session_questions_status_check
+  check (status in ('pending', 'answered', 'dismissed', 'cancelled'));
 
 alter table public.tk_session_questions enable row level security;
 
@@ -329,6 +335,7 @@ $$;
 
 create or replace function public.create_public_session_question(
   p_room_token text,
+  p_participant_id uuid,
   p_text text
 )
 returns jsonb
@@ -347,8 +354,12 @@ begin
     raise exception 'La question doit contenir entre 1 et 500 caractères.';
   end if;
 
-  insert into public.tk_session_questions (session_id, text)
-  select room.session_id, clean_text
+  if p_participant_id is null then
+    raise exception 'Participant invalide.';
+  end if;
+
+  insert into public.tk_session_questions (session_id, participant_id, text)
+  select room.session_id, p_participant_id, clean_text
   from public.tk_public_session_rooms room
   join public.tk_presentation_sessions session on session.id = room.session_id
   where room.room_token = p_room_token and session.status = 'active'
@@ -364,6 +375,96 @@ begin
     'status', new_question.status,
     'created_at', new_question.created_at
   );
+end;
+$$;
+
+create or replace function public.get_public_participant_questions(
+  p_room_token text,
+  p_participant_id uuid
+)
+returns jsonb
+language sql
+security definer
+set search_path = ''
+as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'id', question.id,
+    'text', question.text,
+    'status', question.status,
+    'created_at', question.created_at
+  ) order by question.created_at desc), '[]'::jsonb)
+  from public.tk_session_questions question
+  join public.tk_public_session_rooms room on room.session_id = question.session_id
+  where room.room_token = p_room_token and question.participant_id = p_participant_id;
+$$;
+
+create or replace function public.update_public_participant_question(
+  p_room_token text,
+  p_participant_id uuid,
+  p_question_id uuid,
+  p_text text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  updated_question public.tk_session_questions%rowtype;
+  clean_text text := btrim(coalesce(p_text, ''));
+begin
+  if char_length(clean_text) not between 1 and 500 then
+    raise exception 'La question doit contenir entre 1 et 500 caractères.';
+  end if;
+
+  update public.tk_session_questions question
+  set text = clean_text
+  from public.tk_public_session_rooms room
+  where question.id = p_question_id
+    and question.participant_id = p_participant_id
+    and question.status <> 'cancelled'
+    and room.session_id = question.session_id
+    and room.room_token = p_room_token
+  returning question.* into updated_question;
+
+  if not found then
+    raise exception 'Question introuvable ou non autorisée.';
+  end if;
+
+  return jsonb_build_object('id', updated_question.id, 'text', updated_question.text,
+    'status', updated_question.status, 'created_at', updated_question.created_at);
+end;
+$$;
+
+create or replace function public.cancel_public_participant_question(
+  p_room_token text,
+  p_participant_id uuid,
+  p_question_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  updated_question public.tk_session_questions%rowtype;
+begin
+  update public.tk_session_questions question
+  set status = 'cancelled'
+  from public.tk_public_session_rooms room
+  where question.id = p_question_id
+    and question.participant_id = p_participant_id
+    and question.status <> 'cancelled'
+    and room.session_id = question.session_id
+    and room.room_token = p_room_token
+  returning question.* into updated_question;
+
+  if not found then
+    raise exception 'Question introuvable ou non autorisée.';
+  end if;
+
+  return jsonb_build_object('id', updated_question.id, 'text', updated_question.text,
+    'status', updated_question.status, 'created_at', updated_question.created_at);
 end;
 $$;
 
@@ -396,7 +497,7 @@ as $$
 declare
   updated_question public.tk_session_questions%rowtype;
 begin
-  if p_status not in ('pending', 'answered', 'dismissed') then
+  if p_status not in ('pending', 'answered', 'dismissed', 'cancelled') then
     raise exception 'Statut de question invalide.';
   end if;
 
@@ -424,9 +525,16 @@ $$;
 revoke all on table public.tk_session_questions from anon, authenticated;
 grant select on table public.tk_session_questions to authenticated;
 revoke all on function public.create_public_session_question(text, text) from public;
+revoke all on function public.create_public_session_question(text, uuid, text) from public;
+revoke all on function public.get_public_participant_questions(text, uuid) from public;
+revoke all on function public.update_public_participant_question(text, uuid, uuid, text) from public;
+revoke all on function public.cancel_public_participant_question(text, uuid, uuid) from public;
 revoke all on function public.get_owned_session_questions(uuid) from public;
 revoke all on function public.update_owned_session_question_status(uuid, text) from public;
-grant execute on function public.create_public_session_question(text, text) to anon, authenticated;
+grant execute on function public.create_public_session_question(text, uuid, text) to anon, authenticated;
+grant execute on function public.get_public_participant_questions(text, uuid) to anon, authenticated;
+grant execute on function public.update_public_participant_question(text, uuid, uuid, text) to anon, authenticated;
+grant execute on function public.cancel_public_participant_question(text, uuid, uuid) to anon, authenticated;
 grant execute on function public.get_owned_session_questions(uuid) to authenticated;
 grant execute on function public.update_owned_session_question_status(uuid, text) to authenticated;
 

@@ -139,8 +139,10 @@ test("Limite les statuts de question aux valeurs prévues", () => {
   assert(isQuestionStatus("pending"));
   assert(isQuestionStatus("answered"));
   assert(isQuestionStatus("dismissed"));
+  assert(isQuestionStatus("cancelled"));
   assert(!isQuestionStatus("deleted"));
   equal(getQuestionStatusLabel("pending"), "En attente");
+  equal(getQuestionStatusLabel("cancelled"), "Annulée");
 });
 
 test("Valide un quiz de deux à quatre propositions", () => {

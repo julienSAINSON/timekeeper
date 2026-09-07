@@ -121,10 +121,35 @@ export function loadOwnedPublicSessionRoom(sessionId) {
   return callRpc("get_owned_public_session_room", { p_session_id: sessionId });
 }
 
-export function createPublicSessionQuestion(roomToken, text) {
+export function createPublicSessionQuestion(roomToken, participantId, text) {
   return callRpc("create_public_session_question", {
     p_room_token: roomToken,
+    p_participant_id: participantId,
     p_text: text,
+  });
+}
+
+export function loadPublicParticipantQuestions(roomToken, participantId) {
+  return callRpc("get_public_participant_questions", {
+    p_room_token: roomToken,
+    p_participant_id: participantId,
+  });
+}
+
+export function updatePublicParticipantQuestion(roomToken, participantId, questionId, text) {
+  return callRpc("update_public_participant_question", {
+    p_room_token: roomToken,
+    p_participant_id: participantId,
+    p_question_id: questionId,
+    p_text: text,
+  });
+}
+
+export function cancelPublicParticipantQuestion(roomToken, participantId, questionId) {
+  return callRpc("cancel_public_participant_question", {
+    p_room_token: roomToken,
+    p_participant_id: participantId,
+    p_question_id: questionId,
   });
 }
 

@@ -50,12 +50,14 @@ import {
   createPresentationSession,
   createPublicSessionRoom,
   createPublicSessionQuestion,
+  cancelPublicParticipantQuestion,
   createSharedPlenary,
   deleteSharedPlenary,
   forgetProject,
   getKnownProjects,
   loadPresentationSession,
   loadOwnedSessionQuestions,
+  loadPublicParticipantQuestions,
   loadOwnedPublicSessionRoom,
   loadPublicSessionRoom,
   getPublicRoomActivity,
@@ -71,6 +73,7 @@ import {
   getOwnedQuizResponseSummary,
   publishPublicRoomActivity,
   updateOwnedSessionQuestionStatus,
+  updatePublicParticipantQuestion,
   updatePresentationSession,
 } from "./supabase.js?v=local-project-recovery-v1";
 import {
@@ -111,6 +114,7 @@ let dismissedRecoverySlide = null;
 let sessionWriteQueue = Promise.resolve();
 let sessionQuestions = [];
 let selectedQuestionId = null;
+let publicParticipantQuestions = [];
 let tickHandle = null;
 let fullscreenProgressAnimationHandle = null;
 let currentPdfBuffer = null;
@@ -297,6 +301,8 @@ const elements = {
   publicQuestionInput: document.querySelector("#publicQuestionInput"),
   publicQuestionSubmit: document.querySelector("#publicQuestionSubmit"),
   publicQuestionFeedback: document.querySelector("#publicQuestionFeedback"),
+  publicQuestions: document.querySelector("#publicQuestions"),
+  publicQuestionsList: document.querySelector("#publicQuestionsList"),
   publicQuiz: document.querySelector("#publicQuiz"),
   publicQuizForm: document.querySelector("#publicQuizForm"),
   publicQuizQuestion: document.querySelector("#publicQuizQuestion"),
@@ -1202,6 +1208,7 @@ async function loadPublicRoom(roomToken) {
       refreshPublicRoomActivity().catch((error) => console.error("Impossible d'actualiser l'activité du Room.", error));
     });
     await refreshPublicRoomActivity();
+    await refreshPublicParticipantQuestions();
   } catch (error) {
     console.error("Impossible de rejoindre le Room.", error);
     elements.publicRoomStatus.textContent = "Cette session n'est plus disponible";
@@ -1242,6 +1249,46 @@ function renderPublicQuiz(activity) {
 async function refreshPublicRoomActivity() {
   const activity = await getPublicRoomActivity(publicRoomToken, getParticipantId());
   renderPublicQuiz(activity);
+}
+
+function renderPublicParticipantQuestions() {
+  elements.publicQuestions.hidden = publicParticipantQuestions.length === 0;
+  elements.publicQuestionsList.replaceChildren(...publicParticipantQuestions.map((question) => {
+    const item = document.createElement("article");
+    item.className = "public-question-item";
+    const form = document.createElement("form");
+    form.dataset.publicQuestionId = question.id;
+    const input = document.createElement("textarea");
+    input.name = "text";
+    input.maxLength = 500;
+    input.value = question.text;
+    input.disabled = question.status === "cancelled";
+    const status = document.createElement("p");
+    status.className = "question-feedback";
+    status.textContent = `Statut : ${getQuestionStatusLabel(question.status)}`;
+    const actions = document.createElement("div");
+    actions.className = "question-actions";
+    const save = document.createElement("button");
+    save.className = "secondary-button";
+    save.type = "submit";
+    save.textContent = "Modifier";
+    save.disabled = question.status === "cancelled";
+    const cancel = document.createElement("button");
+    cancel.className = "ghost-button";
+    cancel.type = "button";
+    cancel.dataset.cancelPublicQuestionId = question.id;
+    cancel.textContent = "Annuler";
+    cancel.disabled = question.status === "cancelled";
+    actions.append(save, cancel);
+    form.append(input, status, actions);
+    item.append(form);
+    return item;
+  }));
+}
+
+async function refreshPublicParticipantQuestions() {
+  publicParticipantQuestions = await loadPublicParticipantQuestions(publicRoomToken, getParticipantId()) || [];
+  renderPublicParticipantQuestions();
 }
 
 async function submitPublicQuiz(event) {
@@ -1340,14 +1387,37 @@ async function submitPublicQuestion(event) {
   }
   elements.publicQuestionSubmit.disabled = true;
   try {
-    await createPublicSessionQuestion(publicRoomToken, result.text);
+    await createPublicSessionQuestion(publicRoomToken, getParticipantId(), result.text);
     elements.publicQuestionInput.value = "";
     elements.publicQuestionFeedback.textContent = "Question envoyée";
+    await refreshPublicParticipantQuestions();
   } catch (error) {
     console.error("Impossible d'envoyer la question.", error);
     elements.publicQuestionFeedback.textContent = "Impossible d'envoyer la question. Réessayez.";
   } finally {
     elements.publicQuestionSubmit.disabled = false;
+  }
+}
+
+async function updatePublicQuestion(event) {
+  event.preventDefault();
+  const form = event.target;
+  const result = validateQuestionText(new FormData(form).get("text"));
+  if (!result.valid) return;
+  try {
+    await updatePublicParticipantQuestion(publicRoomToken, getParticipantId(), form.dataset.publicQuestionId, result.text);
+    await refreshPublicParticipantQuestions();
+  } catch (error) {
+    console.error("Impossible de modifier la question.", error);
+  }
+}
+
+async function cancelPublicQuestion(questionId) {
+  try {
+    await cancelPublicParticipantQuestion(publicRoomToken, getParticipantId(), questionId);
+    await refreshPublicParticipantQuestions();
+  } catch (error) {
+    console.error("Impossible d'annuler la question.", error);
   }
 }
 
@@ -2427,6 +2497,11 @@ function attachEvents() {
   elements.exportReportBtn.addEventListener("click", exportPresentationReport);
   elements.exitPresentationBtn.addEventListener("click", leavePresentationMode);
   elements.publicQuestionForm.addEventListener("submit", submitPublicQuestion);
+  elements.publicQuestionsList.addEventListener("submit", updatePublicQuestion);
+  elements.publicQuestionsList.addEventListener("click", (event) => {
+    const questionId = event.target.closest("[data-cancel-public-question-id]")?.dataset.cancelPublicQuestionId;
+    if (questionId) cancelPublicQuestion(questionId);
+  });
   elements.publicQuizForm.addEventListener("submit", submitPublicQuiz);
   elements.publicQuizOptions.addEventListener("change", () => {
     const selected = elements.publicQuizOptions.querySelector("input:checked");

@@ -122,6 +122,37 @@ select:focus-visible {
   margin-top: 28px;
 }
 
+.public-questions,
+.public-questions-list,
+.public-question-item form {
+  display: grid;
+  gap: 12px;
+}
+
+.public-questions {
+  margin-top: 28px;
+}
+
+.public-questions h2 {
+  margin: 0;
+}
+
+.public-question-item {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-soft);
+}
+
+.public-question-item textarea {
+  min-height: 84px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  color: var(--text);
+}
+
 .public-quiz h2 {
   margin: 0;
   font-size: 1.45rem;
