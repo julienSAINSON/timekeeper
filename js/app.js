@@ -757,6 +757,7 @@ function renderSlots() {
     `).join("");
     const article = document.createElement("article");
     article.className = "slot-card";
+    article.classList.toggle("is-optional", slot.optional);
     article.innerHTML = `
       <div class="slot-grid">
         <div class="field">
@@ -775,6 +776,10 @@ function renderSlots() {
           <label for="slot-duration-${slot.id}">Duree (min)</label>
           <input id="slot-duration-${slot.id}" type="number" min="1" value="${slot.durationMinutes}" data-slot-id="${slot.id}" data-field="durationMinutes" />
         </div>
+        <label class="slot-optional-control" for="slot-optional-${slot.id}">
+          <input id="slot-optional-${slot.id}" type="checkbox" ${slot.optional ? "checked" : ""} data-slot-id="${slot.id}" data-field="optional" />
+          <span>Créneau optionnel<small>Pourra être proposé comme possibilité de rattrapage.</small></span>
+        </label>
         <div class="slot-actions">
           <button type="button" class="ghost-button" data-move="up" data-slot-id="${slot.id}" ${index === 0 ? "disabled" : ""}>↑</button>
           <button type="button" class="ghost-button" data-move="down" data-slot-id="${slot.id}" ${index === state.slots.length - 1 ? "disabled" : ""}>↓</button>
@@ -891,7 +896,9 @@ function updateSlot(slotId, field, value, skipFullRender = false) {
     return;
   }
 
-  if (field === "name") {
+  if (field === "optional") {
+    slot.optional = Boolean(value);
+  } else if (field === "name") {
     slot[field] = value;
   } else if (value === "") {
     slot[field] = "";
@@ -2178,7 +2185,9 @@ function attachEvents() {
       updateQuizSlot(target.dataset.quizSlotId, "option", { id: target.dataset.quizOptionId, label: target.value });
       return;
     }
-    updateSlot(target.dataset.slotId, target.dataset.field, target.value, true);
+    if (target.dataset.field !== "optional") {
+      updateSlot(target.dataset.slotId, target.dataset.field, target.value, true);
+    }
   });
 
   elements.slotsList.addEventListener("change", (event) => {
@@ -2192,6 +2201,10 @@ function attachEvents() {
     }
     if (target.dataset.quizOptionId) {
       updateQuizSlot(target.dataset.quizSlotId, "option", { id: target.dataset.quizOptionId, label: target.value });
+      return;
+    }
+    if (target.dataset.field === "optional") {
+      updateSlot(target.dataset.slotId, target.dataset.field, target.checked);
       return;
     }
     updateSlot(target.dataset.slotId, target.dataset.field, target.value);

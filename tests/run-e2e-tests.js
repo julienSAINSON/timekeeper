@@ -237,6 +237,39 @@ test("Crée les types de créneaux et une séquence interactive avec le wizard",
     equal(slots[3].type, "presentation");
     equal(slots[3].optional, false);
 
+    const optionalSnapshots = slots.map((slot) => ({
+      id: slot.id,
+      name: slot.name,
+      type: slot.type,
+      startSlide: slot.startSlide,
+      endSlide: slot.endSlide,
+      durationMinutes: slot.durationMinutes,
+      quizId: slot.quiz?.id,
+    }));
+    [slots[1], slots[2], slots[3]].forEach((slot) => {
+      const optional = documentToTest.querySelector(`#slot-optional-${slot.id}`);
+      optional.checked = true;
+      optional.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    slots = storedSlots(documentToTest);
+    equal(slots[1].optional, true);
+    equal(slots[2].optional, true);
+    equal(slots[3].optional, true);
+    slots.forEach((slot, index) => {
+      const snapshot = optionalSnapshots[index];
+      equal(slot.id, snapshot.id);
+      equal(slot.name, snapshot.name);
+      equal(slot.type, snapshot.type);
+      equal(slot.startSlide, snapshot.startSlide);
+      equal(slot.endSlide, snapshot.endSlide);
+      equal(slot.durationMinutes, snapshot.durationMinutes);
+      equal(slot.quiz?.id, snapshot.quizId);
+    });
+    const questionOptional = documentToTest.querySelector(`#slot-optional-${slots[1].id}`);
+    questionOptional.checked = false;
+    questionOptional.dispatchEvent(new Event("change", { bubbles: true }));
+    equal(storedSlots(documentToTest)[1].optional, false);
+
     localStorage.removeItem(STORAGE_KEY);
     documentToTest = await loadApplication();
     await importFixture(documentToTest);

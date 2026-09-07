@@ -825,6 +825,10 @@ kbd {
   padding: 16px;
 }
 
+.slot-card.is-optional {
+  border-color: rgba(0, 59, 92, 0.42);
+}
+
 .slot-grid {
   display: grid;
   gap: 12px;
@@ -861,6 +865,29 @@ kbd {
   display: flex;
   align-items: end;
   gap: 8px;
+}
+
+.slot-optional-control {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding-top: 24px;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.slot-optional-control input {
+  width: auto;
+  margin: 3px 0 0;
+}
+
+.slot-optional-control small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 500;
 }
 
 .quiz-configuration {
