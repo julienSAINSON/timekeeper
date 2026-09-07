@@ -228,6 +228,14 @@ test("Crée les types de créneaux et une séquence interactive avec le wizard",
     equal(slots[2].quiz.question, "Quelle donnée appartient au projet ?");
     equal(slots[2].quiz.correctOptionId, "A");
     equal(slots[2].quiz.id, quizConfigurationId, "L'identifiant du Quiz doit rester stable.");
+    const quizToggle = documentToTest.querySelector(`[data-toggle-quiz-slot="${quizSlotId}"]`);
+    quizToggle.click();
+    const quizCard = documentToTest.querySelector(`[data-toggle-quiz-slot="${quizSlotId}"]`).closest(".slot-card");
+    assert(quizCard.querySelector(".quiz-slot-question").textContent.includes("Quelle donnée appartient au projet ?"), "La question du Quiz doit rester visible lorsque le créneau est replié.");
+    assert(quizCard.querySelector(".quiz-configuration").hidden, "Le repli doit masquer les champs de configuration du Quiz.");
+    assert(quizCard.querySelector(".quiz-configuration").getBoundingClientRect().height === 0, "Le repli doit également masquer visuellement la configuration du Quiz.");
+    quizCard.querySelector(`[data-toggle-quiz-slot="${quizSlotId}"]`).click();
+    assert(!documentToTest.querySelector(`[data-quiz-slot-id="${quizSlotId}"]`).hidden, "Le dépliage doit restaurer les champs de configuration du Quiz.");
 
     documentToTest.querySelector("#addSlotBtn").click();
     chooseWizardType(documentToTest, "presentation");

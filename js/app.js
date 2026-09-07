@@ -116,6 +116,7 @@ let sessionQuestions = [];
 let selectedQuestionId = null;
 let publicParticipantQuestions = [];
 let editingPublicQuestionId = null;
+const collapsedQuizSlotIds = new Set();
 let tickHandle = null;
 let fullscreenProgressAnimationHandle = null;
 let currentPdfBuffer = null;
@@ -774,6 +775,7 @@ function renderSlots() {
 
   state.slots.forEach((slot, index) => {
     const quiz = slot.type === "quiz" ? slot.quiz : null;
+    const isQuizCollapsed = quiz && collapsedQuizSlotIds.has(slot.id);
     const quizOptions = quiz?.options.filter((option) => option.label.trim()) || [];
     const correctOptionChoices = quizOptions.map((option) => `
       <option value="${option.id}" ${quiz.correctOptionId === option.id ? "selected" : ""}>
@@ -812,7 +814,11 @@ function renderSlots() {
         </div>
       </div>
       ${quiz ? `
-        <fieldset class="quiz-configuration" data-quiz-slot-id="${slot.id}">
+        <button type="button" class="quiz-slot-summary" data-toggle-quiz-slot="${slot.id}" aria-expanded="${!isQuizCollapsed}" aria-label="${isQuizCollapsed ? "Afficher" : "Masquer"} la configuration du quiz" title="${isQuizCollapsed ? "Afficher" : "Masquer"} la configuration du quiz">
+          <span class="quiz-slot-question">${escapeHtml(quiz.question || "Question du quiz non renseignée")}</span>
+          <span class="quiz-slot-toggle" aria-hidden="true">${isQuizCollapsed ? "▼" : "▲"}</span>
+        </button>
+        <fieldset class="quiz-configuration" data-quiz-slot-id="${slot.id}" ${isQuizCollapsed ? "hidden" : ""}>
           <legend>Configuration du quiz</legend>
           <div class="field">
             <label for="quiz-question-${slot.id}">Question du quiz</label>
@@ -961,6 +967,15 @@ function updateQuizSlot(slotId, field, value) {
     if (slot.quiz.correctOptionId === option.id && !option.label.trim()) slot.quiz.correctOptionId = "";
   }
   persist();
+  if (field === "question") {
+    const summary = elements.slotsList.querySelector(`[data-quiz-slot-id="${slot.id}"]`).previousElementSibling;
+    const question = summary?.querySelector(".quiz-slot-question");
+    if (question) {
+      const text = slot.quiz.question || "Question du quiz non renseignée";
+      question.textContent = text;
+      summary.title = text;
+    }
+  }
   refreshQuizCorrectOption(slot);
   const status = elements.slotsList.querySelector(`[data-quiz-slot-id="${slot.id}"] .quiz-configuration-status`);
   if (status) status.textContent = validateQuizConfiguration(slot.quiz).error || "Quiz prêt pour la plénière.";
@@ -2469,6 +2484,17 @@ function attachEvents() {
   elements.slotsList.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    const quizSlotId = target.closest("[data-toggle-quiz-slot]")?.dataset.toggleQuizSlot;
+    if (quizSlotId) {
+      if (collapsedQuizSlotIds.has(quizSlotId)) {
+        collapsedQuizSlotIds.delete(quizSlotId);
+      } else {
+        collapsedQuizSlotIds.add(quizSlotId);
+      }
+      renderSlots();
       return;
     }
 

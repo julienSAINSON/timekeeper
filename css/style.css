@@ -990,6 +990,50 @@ kbd {
   border-radius: 8px;
 }
 
+.quiz-configuration[hidden] {
+  display: none;
+}
+
+.quiz-slot-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  width: 100%;
+  gap: 12px;
+  align-items: center;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.quiz-slot-summary:hover {
+  border-color: var(--accent);
+}
+
+.quiz-slot-question {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quiz-slot-toggle {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: #ffffff;
+}
+
 .quiz-configuration legend {
   padding: 0 6px;
   color: var(--primary);
