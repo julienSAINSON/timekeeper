@@ -16,6 +16,12 @@ import {
   isRoomToken,
 } from "../js/room.js";
 import {
+  QUESTION_MAX_LENGTH,
+  getQuestionStatusLabel,
+  isQuestionStatus,
+  validateQuestionText,
+} from "../js/questions.js";
+import {
   formatClock,
   getCurrentSlot,
   getElapsedMs,
@@ -97,6 +103,25 @@ test("Initialise la nouvelle configuration avec l'heure locale actuelle", () => 
       localStorage.setItem(storageKey, previousState);
     }
   }
+});
+
+test("Valide et normalise le texte d'une question audience", () => {
+  const result = validateQuestionText("  Pouvez-vous préciser ce point ?  ");
+  assert(result.valid);
+  equal(result.text, "Pouvez-vous préciser ce point ?");
+  assert(!validateQuestionText("   ").valid, "Une question vide doit être refusée.");
+  assert(
+    !validateQuestionText("x".repeat(QUESTION_MAX_LENGTH + 1)).valid,
+    "Une question trop longue doit être refusée.",
+  );
+});
+
+test("Limite les statuts de question aux valeurs prévues", () => {
+  assert(isQuestionStatus("pending"));
+  assert(isQuestionStatus("answered"));
+  assert(isQuestionStatus("dismissed"));
+  assert(!isQuestionStatus("deleted"));
+  equal(getQuestionStatusLabel("pending"), "En attente");
 });
 
 test("Génère des tokens de Room opaques et distincts", () => {

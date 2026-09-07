@@ -66,6 +66,14 @@ Le lien ouvre une page mobile dédiée sans connexion, sans interface de configu
 
 Pour GitHub Pages, [404.html](404.html) restaure un lien `/r/*` dans l'application après le fallback statique. Les autres hébergeurs doivent réécrire les chemins `/r/*` vers `index.html` ou servir cette même page 404. Le serveur local `jwebserver` ne fournit pas cette réécriture.
 
+## Questions audience
+
+Un participant anonyme peut poser une question depuis le Room public. Chaque question est une donnée indépendante liée à une session, avec un texte de 500 caractères maximum et l'un des statuts `pending`, `answered` ou `dismissed`. Elle ne fait partie ni du projet, ni de l'état runtime de présentation.
+
+Le participant transmet uniquement le `roomToken` et le texte. La RPC `create_public_session_question` résout côté serveur le Room vers sa session avant l'insertion. Elle ne retourne pas l'identifiant de session. Le participant ne peut ni lire, ni modifier des questions. Monitoring charge les questions de la session de son propriétaire, puis reçoit leurs créations et changements de statut via Supabase Realtime, filtré par `session_id`.
+
+Après chaque évolution, exécutez tout le script [supabase/schema.sql](supabase/schema.sql) dans le SQL Editor Supabase. Il crée les tables, fonctions, politiques RLS et la publication Realtime nécessaires, puis demande à PostgREST de recharger son cache de schéma.
+
 ## Accès Google et bac à sable
 
 Au démarrage, Timekeeper propose un accès Google ou un accès sans compte au bac à sable. Les sessions Google sont persistées par Supabase : un utilisateur déjà connecté accède directement à l'application. Le bouton « Se déconnecter » ferme la session et revient à l'écran d'accès, où le bac à sable reste disponible.

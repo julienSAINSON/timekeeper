@@ -68,6 +68,33 @@ select {
   font-size: 2rem;
 }
 
+.public-question-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.public-question-form label,
+.public-question-form textarea {
+  font-weight: 700;
+}
+
+.public-question-form textarea {
+  min-height: 132px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+  color: var(--text);
+}
+
+.question-feedback {
+  min-height: 1.5em;
+  margin: 0;
+  color: var(--muted);
+  font-weight: 600;
+}
+
 .access-screen {
   position: fixed;
   z-index: 2000;
@@ -794,6 +821,89 @@ kbd {
   place-items: center;
   padding: 8px;
   background: #ffffff;
+}
+
+.questions-panel,
+.selected-question {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.questions-panel h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.questions-list {
+  display: grid;
+  max-height: 240px;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.questions-empty {
+  margin: 0;
+  color: var(--muted);
+}
+
+.question-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  background: #ffffff;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.question-item.is-selected {
+  border-color: var(--accent-strong);
+  box-shadow: inset 3px 0 var(--accent);
+}
+
+.question-item strong {
+  overflow-wrap: anywhere;
+}
+
+.question-item small,
+.selected-question > p:last-of-type {
+  color: var(--muted);
+}
+
+.question-status {
+  border-radius: 4px;
+  padding: 2px 6px;
+  background: rgba(0, 59, 92, 0.08);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.selected-question {
+  margin-top: 0;
+}
+
+.selected-question > p {
+  margin: 0;
+}
+
+.selected-question > p:nth-of-type(2) {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.question-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 @media (max-width: 640px) {

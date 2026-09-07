@@ -23,16 +23,24 @@ import {
   getPublicRoomUrl,
   getRoomTokenFromPath,
 } from "./room.js";
+import {
+  formatQuestionTime,
+  getQuestionStatusLabel,
+  isQuestionStatus,
+  validateQuestionText,
+} from "./questions.js";
 import { calculateSlotReductions } from "./overrun.js";
 import { renderTimeline } from "./timeline.js";
 import {
   createPresentationSession,
   createPublicSessionRoom,
+  createPublicSessionQuestion,
   createSharedPlenary,
   deleteSharedPlenary,
   forgetProject,
   getKnownProjects,
   loadPresentationSession,
+  loadOwnedSessionQuestions,
   loadOwnedPublicSessionRoom,
   loadPublicSessionRoom,
   loadSharedPlenary,
@@ -40,8 +48,10 @@ import {
   saveSharedPlenary,
   setAuthAccessToken,
   subscribeToPresentationSession,
+  subscribeToSessionQuestions,
+  updateOwnedSessionQuestionStatus,
   updatePresentationSession,
-} from "./supabase.js?v=public-room-v1";
+} from "./supabase.js?v=audience-questions-v1";
 import {
   getCurrentAccessToken,
   getCurrentUser,
@@ -67,7 +77,10 @@ let activeSessionId = new URLSearchParams(window.location.search).get("sessionId
 let activeRoomToken = null;
 let sessionVersion = null;
 let stopSessionSubscription = null;
+let stopQuestionsSubscription = null;
 let sessionWriteQueue = Promise.resolve();
+let sessionQuestions = [];
+let selectedQuestionId = null;
 let tickHandle = null;
 let fullscreenProgressAnimationHandle = null;
 let currentPdfBuffer = null;
@@ -240,6 +253,18 @@ const elements = {
   publicRoomView: document.querySelector("#publicRoomView"),
   publicRoomStatus: document.querySelector("#publicRoomStatus"),
   publicRoomDetail: document.querySelector("#publicRoomDetail"),
+  publicQuestionForm: document.querySelector("#publicQuestionForm"),
+  publicQuestionInput: document.querySelector("#publicQuestionInput"),
+  publicQuestionSubmit: document.querySelector("#publicQuestionSubmit"),
+  publicQuestionFeedback: document.querySelector("#publicQuestionFeedback"),
+  questionsPanel: document.querySelector("#questionsPanel"),
+  questionsList: document.querySelector("#questionsList"),
+  selectedQuestion: document.querySelector("#selectedQuestion"),
+  selectedQuestionText: document.querySelector("#selectedQuestionText"),
+  selectedQuestionTime: document.querySelector("#selectedQuestionTime"),
+  selectedQuestionStatus: document.querySelector("#selectedQuestionStatus"),
+  answerQuestionBtn: document.querySelector("#answerQuestionBtn"),
+  dismissQuestionBtn: document.querySelector("#dismissQuestionBtn"),
 };
 
 function showApplication(mode, user = null, accessToken = null) {
@@ -1056,10 +1081,106 @@ async function loadPublicRoom(roomToken) {
     elements.publicRoomDetail.textContent = room.isRunning
       ? "La session est en cours. Restez sur cette page pour participer aux prochaines activités."
       : "En attente du début de la session.";
+    elements.publicQuestionForm.hidden = false;
   } catch (error) {
     console.error("Impossible de rejoindre le Room.", error);
     elements.publicRoomStatus.textContent = "Cette session n'est plus disponible";
     elements.publicRoomDetail.textContent = "Le lien est invalide ou la session est terminée.";
+  }
+}
+
+function renderQuestions() {
+  const isMonitoring = viewMode === "monitoring" && Boolean(activeSessionId);
+  elements.questionsPanel.hidden = !isMonitoring;
+  if (!isMonitoring) {
+    return;
+  }
+  const questions = [...sessionQuestions].sort((first, second) => second.created_at.localeCompare(first.created_at));
+  if (!questions.length) {
+    const emptyState = document.createElement("p");
+    emptyState.className = "questions-empty";
+    emptyState.textContent = "Aucune question pour le moment.";
+    elements.questionsList.replaceChildren(emptyState);
+  } else {
+    elements.questionsList.replaceChildren(...questions.map((question) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "question-item";
+    item.classList.toggle("is-selected", question.id === selectedQuestionId);
+    item.dataset.questionId = question.id;
+    const status = document.createElement("span");
+    status.className = "question-status";
+    status.textContent = getQuestionStatusLabel(question.status);
+    const text = document.createElement("strong");
+    text.textContent = question.text;
+    const time = document.createElement("small");
+    time.textContent = formatQuestionTime(question.created_at);
+    item.append(status, text, time);
+    return item;
+    }));
+  }
+  const selectedQuestion = sessionQuestions.find((question) => question.id === selectedQuestionId);
+  elements.selectedQuestion.hidden = !selectedQuestion;
+  if (selectedQuestion) {
+    elements.selectedQuestionText.textContent = selectedQuestion.text;
+    elements.selectedQuestionTime.textContent = formatQuestionTime(selectedQuestion.created_at);
+    elements.selectedQuestionStatus.textContent = getQuestionStatusLabel(selectedQuestion.status);
+    const isPending = selectedQuestion.status === "pending";
+    elements.answerQuestionBtn.disabled = !isPending;
+    elements.dismissQuestionBtn.disabled = !isPending;
+  }
+}
+
+function upsertQuestion(question) {
+  const index = sessionQuestions.findIndex((item) => item.id === question.id);
+  if (index < 0) {
+    sessionQuestions.unshift(question);
+  } else {
+    sessionQuestions[index] = question;
+  }
+  renderQuestions();
+}
+
+async function loadQuestionsForMonitoring(sessionId) {
+  if (viewMode !== "monitoring") {
+    return;
+  }
+  sessionQuestions = await loadOwnedSessionQuestions(sessionId) || [];
+  renderQuestions();
+  stopQuestionsSubscription?.();
+  stopQuestionsSubscription = subscribeToSessionQuestions(sessionId, upsertQuestion, upsertQuestion);
+}
+
+async function submitPublicQuestion(event) {
+  event.preventDefault();
+  const result = validateQuestionText(elements.publicQuestionInput.value);
+  elements.publicQuestionFeedback.textContent = result.error;
+  if (!result.valid) {
+    return;
+  }
+  elements.publicQuestionSubmit.disabled = true;
+  try {
+    await createPublicSessionQuestion(publicRoomToken, result.text);
+    elements.publicQuestionInput.value = "";
+    elements.publicQuestionFeedback.textContent = "Question envoyée";
+  } catch (error) {
+    console.error("Impossible d'envoyer la question.", error);
+    elements.publicQuestionFeedback.textContent = "Impossible d'envoyer la question. Réessayez.";
+  } finally {
+    elements.publicQuestionSubmit.disabled = false;
+  }
+}
+
+async function updateSelectedQuestionStatus(status) {
+  const question = sessionQuestions.find((item) => item.id === selectedQuestionId);
+  if (!question || !isQuestionStatus(status)) {
+    return;
+  }
+  try {
+    const updatedQuestion = await updateOwnedSessionQuestionStatus(question.id, status);
+    upsertQuestion(updatedQuestion);
+  } catch (error) {
+    console.error("Impossible de modifier le statut de la question.", error);
   }
 }
 
@@ -1071,6 +1192,7 @@ function applySessionRecord(record) {
   activeSessionId = record.id;
   sessionVersion = Number(record.version);
   renderRoomAccess();
+  renderQuestions();
   switchView(true);
   setPresentationDetailsCollapsed(viewMode === "presentation");
   renderPresentationMetrics();
@@ -1127,6 +1249,7 @@ async function joinPresentationSession(sessionId) {
   const room = await loadOwnedPublicSessionRoom(sessionId);
   activeRoomToken = room?.roomToken || null;
   renderRoomAccess();
+  await loadQuestionsForMonitoring(sessionId);
   stopSessionSubscription?.();
   stopSessionSubscription = subscribeToPresentationSession(sessionId, (remoteSession) => {
     if (Number(remoteSession.version) <= sessionVersion) {
@@ -1566,6 +1689,10 @@ function leavePresentationMode() {
   activeSessionId = null;
   activeRoomToken = null;
   sessionVersion = null;
+  stopQuestionsSubscription?.();
+  stopQuestionsSubscription = null;
+  sessionQuestions = [];
+  selectedQuestionId = null;
   if (!isMonitoring) {
     localStorage.removeItem(LOCAL_SESSION_KEY);
   }
@@ -1870,6 +1997,17 @@ function attachEvents() {
   elements.resumeBtn.addEventListener("click", resumePresentation);
   elements.exportReportBtn.addEventListener("click", exportPresentationReport);
   elements.exitPresentationBtn.addEventListener("click", leavePresentationMode);
+    elements.publicQuestionForm.addEventListener("submit", submitPublicQuestion);
+    elements.questionsList.addEventListener("click", (event) => {
+      const questionButton = event.target.closest("[data-question-id]");
+      if (!questionButton) {
+        return;
+      }
+      selectedQuestionId = questionButton.dataset.questionId;
+      renderQuestions();
+    });
+    elements.answerQuestionBtn.addEventListener("click", () => updateSelectedQuestionStatus("answered"));
+    elements.dismissQuestionBtn.addEventListener("click", () => updateSelectedQuestionStatus("dismissed"));
   elements.resetBtn.addEventListener("click", resetPresentation);
   elements.clearConfigBtn.addEventListener("click", clearConfiguration);
   elements.tutorialBtn.addEventListener("click", openTutorial);
@@ -1983,6 +2121,7 @@ function attachEvents() {
 
 async function bootstrap() {
   if (publicRoomToken) {
+    attachEvents();
     await loadPublicRoom(publicRoomToken);
     return;
   }

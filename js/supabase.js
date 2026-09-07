@@ -115,6 +115,24 @@ export function loadOwnedPublicSessionRoom(sessionId) {
   return callRpc("get_owned_public_session_room", { p_session_id: sessionId });
 }
 
+export function createPublicSessionQuestion(roomToken, text) {
+  return callRpc("create_public_session_question", {
+    p_room_token: roomToken,
+    p_text: text,
+  });
+}
+
+export function loadOwnedSessionQuestions(sessionId) {
+  return callRpc("get_owned_session_questions", { p_session_id: sessionId });
+}
+
+export function updateOwnedSessionQuestionStatus(questionId, status) {
+  return callRpc("update_owned_session_question_status", {
+    p_question_id: questionId,
+    p_status: status,
+  });
+}
+
 export function subscribeToPresentationSession(sessionId, onUpdate) {
   const realtimeClient = getSupabaseClient();
   const channel = realtimeClient
@@ -128,6 +146,35 @@ export function subscribeToPresentationSession(sessionId, onUpdate) {
         filter: `id=eq.${sessionId}`,
       },
       ({ new: session }) => onUpdate(session),
+    )
+    .subscribe();
+
+  return () => realtimeClient.removeChannel(channel);
+}
+
+export function subscribeToSessionQuestions(sessionId, onInsert, onUpdate) {
+  const realtimeClient = getSupabaseClient();
+  const channel = realtimeClient
+    .channel(`session-questions:${sessionId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "tk_session_questions",
+        filter: `session_id=eq.${sessionId}`,
+      },
+      ({ new: question }) => onInsert(question),
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "tk_session_questions",
+        filter: `session_id=eq.${sessionId}`,
+      },
+      ({ new: question }) => onUpdate(question),
     )
     .subscribe();
 

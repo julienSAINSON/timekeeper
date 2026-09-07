@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./css/style.css?v=public-room-v2" />
+    <link rel="stylesheet" href="./css/style.css?v=audience-questions-v1" />
   </head>
   <body>
     <main id="publicRoomView" class="public-room-view" hidden aria-live="polite">
@@ -18,6 +18,12 @@
         <p class="eyebrow">SAFe Timekeeper</p>
         <h1 id="publicRoomStatus">Connexion à la session...</h1>
         <p id="publicRoomDetail" class="lead">Vérification de votre lien de participation.</p>
+        <form id="publicQuestionForm" class="public-question-form" hidden>
+          <label for="publicQuestionInput">Votre question</label>
+          <textarea id="publicQuestionInput" maxlength="500" required></textarea>
+          <button id="publicQuestionSubmit" class="primary-button" type="submit">Envoyer</button>
+          <p id="publicQuestionFeedback" class="question-feedback" aria-live="polite"></p>
+        </form>
       </section>
     </main>
     <section id="accessScreen" class="access-screen" aria-labelledby="accessTitle">
@@ -355,6 +361,22 @@
                 </div>
                 <div id="roomQrCode" class="room-qr-code" aria-label="QR code pour rejoindre la session"></div>
               </section>
+              <section id="questionsPanel" class="questions-panel" hidden aria-labelledby="questionsTitle">
+                <div>
+                  <p class="eyebrow">Audience</p>
+                  <h3 id="questionsTitle">Questions</h3>
+                </div>
+                <div id="questionsList" class="questions-list" aria-live="polite"></div>
+                <section id="selectedQuestion" class="selected-question" hidden aria-labelledby="selectedQuestionTitle">
+                  <p class="eyebrow" id="selectedQuestionTitle">Question sélectionnée</p>
+                  <p id="selectedQuestionText"></p>
+                  <p><span id="selectedQuestionTime"></span> · <span id="selectedQuestionStatus"></span></p>
+                  <div class="question-actions">
+                    <button id="answerQuestionBtn" class="secondary-button" type="button">Marquer comme traitée</button>
+                    <button id="dismissQuestionBtn" class="ghost-button" type="button">Écarter</button>
+                  </div>
+                </section>
+              </section>
               <div class="presentation-help">
                 Raccourcis: ← → Espace pour naviguer, <kbd>P</kbd> pause/reprise, <kbd>F</kbd> ou <kbd>F11</kbd> plein écran.
               </div>
@@ -390,6 +412,6 @@
       data-pdfjs="true"
     ></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <script type="module" src="./js/app.js?v=monitoring-exit-v1"></script>
+    <script type="module" src="./js/app.js?v=audience-questions-v1"></script>
   </body>
 </html>
