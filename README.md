@@ -50,6 +50,14 @@ Après toute mise à jour du projet, réexécutez ce script : il crée ou met à
 
 Le lien contient un jeton UUID qui donne accès à la plénière. Partagez-le uniquement avec les personnes autorisées à voir ou modifier cette configuration.
 
+## Sessions de présentation en temps réel
+
+Un projet sauvegardé depuis un compte Google démarre une session de présentation distincte, synchronisée par Supabase Realtime. L'onglet courant devient `?view=presentation&sessionId=<uuid>` et ouvre un second onglet `?view=monitoring&sessionId=<uuid>`. La navigation, la pause, la reprise et les ajustements de dépassement sont envoyés à Supabase à chaque action, jamais à chaque tick du chronomètre.
+
+La session est réservée au compte propriétaire du projet. Les mises à jour utilisent un verrouillage optimiste par numéro de version : si deux actions concurrentes se croisent, l'interface recharge l'état le plus récent au lieu de l'écraser. Exécutez à nouveau tout le script [supabase/schema.sql](supabase/schema.sql) avant d'utiliser cette fonctionnalité : il crée la table de sessions, les RPC protégées et la publication Realtime.
+
+Le PDF reste volontairement dans la mémoire du navigateur et n'est jamais stocké dans la session ni transféré entre onglets. Après rechargement de l'onglet Présentation, réimportez le PDF pour retrouver son rendu ; l'état de session et la vue Monitoring sont, eux, restaurés depuis Supabase.
+
 ## Accès Google et bac à sable
 
 Au démarrage, Timekeeper propose un accès Google ou un accès sans compte au bac à sable. Les sessions Google sont persistées par Supabase : un utilisateur déjà connecté accède directement à l'application. Le bouton « Se déconnecter » ferme la session et revient à l'écran d'accès, où le bac à sable reste disponible.

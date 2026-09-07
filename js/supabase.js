@@ -1,10 +1,14 @@
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./supabaseConfig.js?v=access-v1";
+import { getSupabaseClient } from "../auth/auth.js";
 
 const PROJECT_INDEX_KEY = "safe-timekeeper-project-index-v1";
 let authAccessToken = null;
 
 export function setAuthAccessToken(accessToken) {
   authAccessToken = accessToken || null;
+  if (authAccessToken) {
+    getSupabaseClient().realtime.setAuth(authAccessToken);
+  }
 }
 
 function sharedState(state) {
@@ -74,4 +78,43 @@ export async function deleteSharedPlenary(token) {
 export function forgetProject(token) {
   const projects = getKnownProjects().filter((project) => project.token !== token);
   localStorage.setItem(PROJECT_INDEX_KEY, JSON.stringify(projects));
+}
+
+export function createPresentationSession(projectToken, session) {
+  return callRpc("create_presentation_session", {
+    p_share_token: projectToken,
+    p_session_id: session.id,
+    p_state: session,
+  });
+}
+
+export function loadPresentationSession(sessionId) {
+  return callRpc("get_presentation_session", { p_session_id: sessionId });
+}
+
+export function updatePresentationSession(sessionId, session, expectedVersion) {
+  return callRpc("update_presentation_session", {
+    p_session_id: sessionId,
+    p_state: session,
+    p_expected_version: expectedVersion,
+  });
+}
+
+export function subscribeToPresentationSession(sessionId, onUpdate) {
+  const realtimeClient = getSupabaseClient();
+  const channel = realtimeClient
+    .channel(`presentation-session:${sessionId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "tk_presentation_sessions",
+        filter: `id=eq.${sessionId}`,
+      },
+      ({ new: session }) => onUpdate(session),
+    )
+    .subscribe();
+
+  return () => realtimeClient.removeChannel(channel);
 }

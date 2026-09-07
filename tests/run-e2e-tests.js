@@ -1,4 +1,5 @@
 const STORAGE_KEY = "safe-timekeeper-config-v1";
+const LOCAL_SESSION_KEY = "safe-timekeeper-active-session-v1";
 const results = document.querySelector("#results");
 const summary = document.querySelector("#summary");
 const applicationFrame = document.querySelector("#application");
@@ -56,6 +57,20 @@ async function loadMonitoringApplication() {
     "La vue Monitoring ne s'est pas initialisée.",
   );
   return monitoringFrame;
+}
+
+async function loadApplicationAt(url) {
+  const frame = document.createElement("iframe");
+  frame.hidden = true;
+  document.body.appendChild(frame);
+  const loaded = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
+  frame.src = url;
+  await loaded;
+  await waitFor(
+    () => frame.contentDocument?.querySelector("#presentationView.active"),
+    "La vue Monitoring ne s'est pas initialisée.",
+  );
+  return frame;
 }
 
 function updateInput(documentToTest, selector, value) {
@@ -116,6 +131,10 @@ test("Importe la fixture PDF et exécute le parcours de présentation", async ()
     await waitFor(
       () => documentToTest.querySelector("#presentationView").classList.contains("active"),
       "La présentation ne s'est pas lancée.",
+    );
+    assert(
+      documentToTest.defaultView.location.search === "?view=presentation",
+      "Le démarrage local doit ouvrir la route Présentation.",
     );
     await waitFor(
       () => documentToTest.querySelector("#pdfCanvas").width > 0,
@@ -246,15 +265,86 @@ test("Crée les types de créneaux et une séquence interactive avec le wizard",
   }
 });
 
-test("Sépare Présentation et Monitoring avec une session locale synchronisée", async () => {
+test("Navigue depuis Monitoring avec une session locale", async () => {
+  const previousSession = localStorage.getItem(LOCAL_SESSION_KEY);
+  let monitoringFrame = null;
+  try {
+    localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify({
+      project: {
+        pageCount: 3,
+        slots: [{
+          id: "slot-1",
+          name: "Présentation",
+          type: "presentation",
+          startSlide: 1,
+          endSlide: 3,
+          durationMinutes: 3,
+          optional: false,
+        }],
+        plenary: { startTime: "09:00", durationMinutes: 3 },
+      },
+      session: {
+        id: "local-monitoring-session",
+        status: "active",
+        version: 1,
+        isRunning: true,
+        isPaused: false,
+        currentSlide: 1,
+        startedAt: Date.now(),
+        pausedAt: null,
+        totalPausedMs: 0,
+        accruedDebtMs: 0,
+        initialDelayMs: 0,
+        initialAdvanceMs: 0,
+        slotOverrunsMs: {},
+        slotReductionsMs: {},
+        slotStartedElapsedMs: { "slot-1": 0 },
+        overrunStrategy: "next",
+      },
+    }));
+    monitoringFrame = await loadMonitoringApplication();
+    const monitoringDocument = monitoringFrame.contentDocument;
+    await waitFor(
+      () => monitoringDocument.querySelector("#slideCounter").textContent === "Slide 1 / 3",
+      "Monitoring n'a pas restauré la session locale.",
+    );
+    monitoringDocument.querySelector("#nextSlideBtn").click();
+    await waitFor(
+      () => monitoringDocument.querySelector("#slideCounter").textContent === "Slide 2 / 3",
+      "Le bouton Suivante de Monitoring n'a pas avancé la slide.",
+    );
+  } finally {
+    monitoringFrame?.remove();
+    if (previousSession === null) {
+      localStorage.removeItem(LOCAL_SESSION_KEY);
+    } else {
+      localStorage.setItem(LOCAL_SESSION_KEY, previousSession);
+    }
+  }
+});
+
+test("Ouvre Monitoring et synchronise sa navigation avec Présentation", async () => {
   const previousState = localStorage.getItem(STORAGE_KEY);
+  const previousSession = localStorage.getItem(LOCAL_SESSION_KEY);
   let monitoringFrame = null;
   try {
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(LOCAL_SESSION_KEY);
     const presentationDocument = await loadApplication();
     await importFixture(presentationDocument);
     updateInput(presentationDocument, "#plenaryStart", "09:00");
     updateInput(presentationDocument, "#plenaryDurationInput", "30");
+
+    let monitoringUrl = "";
+    const presentationWindow = presentationDocument.defaultView;
+    presentationWindow.open = (url) => {
+      monitoringUrl = url;
+      return {
+        close() {},
+        location: { replace(nextUrl) { monitoringUrl = nextUrl; } },
+      };
+    };
+
     presentationDocument.querySelector("#startPresentationBtn").click();
     presentationDocument.querySelector('#strategyDialog button[value="confirm"]').click();
     await waitFor(
@@ -262,44 +352,29 @@ test("Sépare Présentation et Monitoring avec une session locale synchronisée"
       "La vue Présentation ne s'est pas lancée.",
     );
     assert(
-      presentationDocument.defaultView.location.search === "?view=presentation",
-      "L'onglet source doit devenir la vue Présentation.",
-    );
-    const presentationWindow = presentationDocument.defaultView;
-    assert(
-      presentationWindow.getComputedStyle(presentationDocument.querySelector(".timeline-panel")).display === "none",
-      "La timeline ne doit pas être visible dans Présentation.",
+      new URL(monitoringUrl).searchParams.get("view") === "monitoring",
+      "Le clic de démarrage doit ouvrir un nouvel onglet Monitoring.",
     );
 
-    monitoringFrame = await loadMonitoringApplication();
+    monitoringFrame = await loadApplicationAt(monitoringUrl);
     const monitoringDocument = monitoringFrame.contentDocument;
     await waitFor(
-      () => monitoringDocument.querySelector("#globalTimer").textContent !== "00:00 / 00:00",
-      "Monitoring n'a pas reçu la session active.",
-    );
-    assert(
-      monitoringDocument.querySelector("#slideCounter").textContent === "Slide 1 / 6",
-      "Monitoring doit recevoir le nombre de slides du projet de Présentation.",
-    );
-    const monitoringWindow = monitoringDocument.defaultView;
-    assert(
-      monitoringWindow.getComputedStyle(monitoringDocument.querySelector(".timeline-panel")).display !== "none",
-      "La timeline doit être visible dans Monitoring.",
-    );
-    assert(
-      monitoringWindow.getComputedStyle(monitoringDocument.querySelector(".presentation-toolbar")).display !== "none",
-      "Les contrôles doivent être visibles dans Monitoring.",
-    );
-
-    presentationDocument.querySelector("#pdfStage").click();
-    await waitFor(
-      () => monitoringDocument.querySelector("#slideCounter").textContent === "Slide 2 / 6",
-      "Monitoring n'a pas reçu la navigation de Présentation.",
+      () => monitoringDocument.querySelector("#slideCounter").textContent === "Slide 1 / 6",
+      "Monitoring n'a pas restauré l'état créé par Présentation.",
     );
     monitoringDocument.querySelector("#nextSlideBtn").click();
     await waitFor(
-      () => presentationDocument.querySelector("#slideCounter").textContent === "Slide 3 / 6",
-      "Présentation n'a pas reçu la navigation de Monitoring.",
+      () => monitoringDocument.querySelector("#slideCounter").textContent === "Slide 2 / 6",
+      "Monitoring n'a pas appliqué sa commande Suivante.",
+    );
+    await waitFor(
+      () => presentationDocument.querySelector("#slideCounter").textContent === "Slide 2 / 6",
+      "Présentation n'a pas reçu la navigation depuis Monitoring.",
+    );
+    presentationDocument.querySelector("#nextSlideBtn").click();
+    await waitFor(
+      () => monitoringDocument.querySelector("#slideCounter").textContent === "Slide 3 / 6",
+      "Monitoring n'a pas reçu la navigation depuis Présentation.",
     );
   } finally {
     monitoringFrame?.remove();
@@ -307,6 +382,11 @@ test("Sépare Présentation et Monitoring avec une session locale synchronisée"
       localStorage.removeItem(STORAGE_KEY);
     } else {
       localStorage.setItem(STORAGE_KEY, previousState);
+    }
+    if (previousSession === null) {
+      localStorage.removeItem(LOCAL_SESSION_KEY);
+    } else {
+      localStorage.setItem(LOCAL_SESSION_KEY, previousSession);
     }
     await loadApplication();
   }

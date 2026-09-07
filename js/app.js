@@ -21,16 +21,21 @@ import { createSessionState } from "./session.js";
 import { calculateSlotReductions } from "./overrun.js";
 import { renderTimeline } from "./timeline.js";
 import {
+  createPresentationSession,
   createSharedPlenary,
   deleteSharedPlenary,
   forgetProject,
   getKnownProjects,
+  loadPresentationSession,
   loadSharedPlenary,
   rememberProject,
   saveSharedPlenary,
   setAuthAccessToken,
+  subscribeToPresentationSession,
+  updatePresentationSession,
 } from "./supabase.js?v=access-v1";
 import {
+  getCurrentAccessToken,
   getCurrentUser,
   initAuth,
   loginWithGoogle,
@@ -40,10 +45,12 @@ import {
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./supabaseConfig.js?v=access-v1";
 
 const state = loadState();
+const LOCAL_SESSION_KEY = "safe-timekeeper-active-session-v1";
 let viewMode = new URLSearchParams(window.location.search).get("view") || "config";
-const sessionChannel = typeof BroadcastChannel === "undefined"
-  ? null
-  : new BroadcastChannel("safe-timekeeper-presentation-session-v1");
+let activeSessionId = new URLSearchParams(window.location.search).get("sessionId") || null;
+let sessionVersion = null;
+let stopSessionSubscription = null;
+let sessionWriteQueue = Promise.resolve();
 let tickHandle = null;
 let fullscreenProgressAnimationHandle = null;
 let currentPdfBuffer = null;
@@ -967,105 +974,117 @@ function switchView(isPresentation) {
   document.body.classList.toggle("is-monitoring", isPresentation && viewMode === "monitoring");
 }
 
-function syncPresentationSession() {
-  if (presentationSession && sessionChannel) {
-    sessionChannel.postMessage({
-      type: "session-update",
-      session: presentationSession,
-      project: state,
-      pdfBuffer: currentPdfBuffer,
-    });
-  }
-}
-
-function openMonitoringView() {
+function openMonitoringView(sessionId, monitoringWindow = null) {
   const monitoringUrl = new URL(window.location.href);
   monitoringUrl.searchParams.set("view", "monitoring");
+  if (sessionId) {
+    monitoringUrl.searchParams.set("sessionId", sessionId);
+  } else {
+    monitoringUrl.searchParams.delete("sessionId");
+  }
+  if (monitoringWindow) {
+    monitoringWindow.location.replace(monitoringUrl.href);
+    return;
+  }
   window.open(monitoringUrl.href, `timekeeper-monitoring-${crypto.randomUUID()}`);
 }
 
-function applyPresentationProject(project, pdfBuffer) {
-  if (project) {
-    Object.assign(state, normalizeState(project));
+function applySessionRecord(record) {
+  if (record.project) {
+    Object.assign(state, normalizeState(record.project));
   }
-  if (pdfBuffer) {
-    currentPdfBuffer = new Uint8Array(pdfBuffer);
-  }
-}
-
-function activateMonitoringSession(session, project, pdfBuffer) {
-  applyPresentationProject(project, pdfBuffer);
-  presentationSession = session;
+  presentationSession = record.state;
+  activeSessionId = record.id;
+  sessionVersion = Number(record.version);
   switchView(true);
-  setPresentationDetailsCollapsed(false);
+  setPresentationDetailsCollapsed(viewMode === "presentation");
   renderPresentationMetrics();
+  if (viewMode === "presentation") {
+    renderCurrentSlide().catch((error) => console.error("Impossible de rendre la slide synchronisée.", error));
+  }
   startTicking();
 }
 
-async function activatePresentationSession(session, project, pdfBuffer) {
-  applyPresentationProject(project, pdfBuffer);
-  presentationSession = session;
-  showApplication("presentation");
+function applyLocalSessionRecord(record) {
+  if (!record?.session) {
+    return;
+  }
+  if (record.project) {
+    Object.assign(state, normalizeState(record.project));
+  }
+  presentationSession = record.session;
   switchView(true);
-  setPresentationDetailsCollapsed(true);
-  await ensurePdfLoaded();
-  await renderCurrentSlide();
+  setPresentationDetailsCollapsed(viewMode === "presentation");
   renderPresentationMetrics();
+  if (viewMode === "presentation") {
+    renderCurrentSlide().catch((error) => console.error("Impossible de rendre la slide locale.", error));
+  }
   startTicking();
-  sessionChannel?.postMessage({ type: "presentation-ready", sessionId: session.id });
 }
 
-function attachSessionChannel() {
-  if (!sessionChannel) {
+function saveLocalSession() {
+  if (!presentationSession) {
+    return;
+  }
+  localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify({
+    session: presentationSession,
+    project: state,
+  }));
+}
+
+function loadLocalSession() {
+  try {
+    const record = JSON.parse(localStorage.getItem(LOCAL_SESSION_KEY) || "null");
+    applyLocalSessionRecord(record);
+    return Boolean(record?.session);
+  } catch (error) {
+    console.warn("Impossible de restaurer la session locale.", error);
+    return false;
+  }
+}
+
+async function joinPresentationSession(sessionId) {
+  const record = await loadPresentationSession(sessionId);
+  if (!record) {
+    throw new Error("Cette session est introuvable ou vous n'y avez pas accès.");
+  }
+  applySessionRecord(record);
+  stopSessionSubscription?.();
+  stopSessionSubscription = subscribeToPresentationSession(sessionId, (remoteSession) => {
+    if (Number(remoteSession.version) <= sessionVersion) {
+      return;
+    }
+    applySessionRecord(remoteSession);
+  });
+}
+
+function syncPresentationSession() {
+  if (!presentationSession) {
     return;
   }
 
-  sessionChannel.addEventListener("message", (event) => {
-    const { type, session, project, pdfBuffer, sessionId } = event.data || {};
-    if (type === "session-request" && presentationSession && currentPdfBuffer) {
-      sessionChannel.postMessage({
-        type: "session-update",
-        session: presentationSession,
-        project: state,
-        pdfBuffer: currentPdfBuffer,
-      });
-    } else if (
-      type === "session-update" &&
-      session &&
-      (viewMode === "monitoring" || presentationSession?.id === session.id)
-    ) {
-      if (presentationSession) {
-        if (viewMode === "monitoring") {
-          applyPresentationProject(project, pdfBuffer);
-        }
-        Object.assign(presentationSession, session);
-        if (viewMode === "presentation") {
-          renderCurrentSlide().catch((error) => console.error("Impossible de rendre la slide synchronisée.", error));
-        }
-        renderPresentationMetrics();
-      } else {
-        if (viewMode === "presentation") {
-          activatePresentationSession(session, project, pdfBuffer).catch((error) => console.error(error));
-        } else {
-          activateMonitoringSession(session, project, pdfBuffer);
-        }
+  if (!activeSessionId || sessionVersion === null) {
+    saveLocalSession();
+    return;
+  }
+
+  const snapshot = structuredClone(presentationSession);
+  const sessionId = activeSessionId;
+  sessionWriteQueue = sessionWriteQueue.then(async () => {
+    try {
+      const savedSession = await updatePresentationSession(sessionId, snapshot, sessionVersion);
+      if (activeSessionId === sessionId) {
+        sessionVersion = Number(savedSession.version);
+        presentationSession.version = sessionVersion;
+      }
+    } catch (error) {
+      console.error("Impossible de synchroniser la session.", error);
+      const latestSession = await loadPresentationSession(sessionId);
+      if (latestSession) {
+        applySessionRecord(latestSession);
       }
     }
   });
-
-  if (viewMode === "monitoring" || viewMode === "presentation") {
-    sessionChannel.postMessage({ type: "session-request" });
-  }
-
-  if (viewMode === "presentation") {
-    const sessionRequestHandle = window.setInterval(() => {
-      if (presentationSession) {
-        window.clearInterval(sessionRequestHandle);
-      } else {
-        sessionChannel.postMessage({ type: "session-request" });
-      }
-    }, 500);
-  }
 }
 
 function setPresentationDetailsCollapsed(isCollapsed) {
@@ -1381,7 +1400,10 @@ function applyOverrunStrategy(completedSlotIndex, totalDebtMs = presentationSess
 async function enterPresentationMode(overrunStrategy = "next") {
   if (viewMode === "config") {
     viewMode = "presentation";
-    window.history.replaceState({}, "", `${window.location.pathname}?view=presentation`);
+    const presentationUrl = new URL(window.location.href);
+    presentationUrl.searchParams.set("view", "presentation");
+    presentationUrl.searchParams.delete("sessionId");
+    window.history.replaceState({}, "", presentationUrl.href);
   }
   switchView(true);
   setPresentationDetailsCollapsed(viewMode === "presentation");
@@ -1426,6 +1448,25 @@ async function enterPresentationMode(overrunStrategy = "next") {
   presentationSession.totalPausedMs = presentationSession.totalPausedMs || 0;
   elements.pauseBtn.disabled = false;
   elements.resumeBtn.disabled = true;
+  if (accessMode === "authenticated") {
+    if (!state.remoteToken) {
+      switchView(false);
+      throw new Error("Sauvegardez ce projet avant de démarrer une session synchronisée.");
+    }
+    const remoteSession = await createPresentationSession(state.remoteToken, presentationSession);
+    activeSessionId = remoteSession.id;
+    sessionVersion = Number(remoteSession.version);
+    const presentationUrl = new URL(window.location.href);
+    presentationUrl.searchParams.set("view", "presentation");
+    presentationUrl.searchParams.set("sessionId", activeSessionId);
+    window.history.replaceState({}, "", presentationUrl.href);
+    stopSessionSubscription?.();
+    stopSessionSubscription = subscribeToPresentationSession(activeSessionId, (updatedSession) => {
+      if (Number(updatedSession.version) > sessionVersion) {
+        applySessionRecord(updatedSession);
+      }
+    });
+  }
   syncPresentationSession();
   renderPresentationMetrics();
   await waitForNextFrame();
@@ -1436,13 +1477,18 @@ async function enterPresentationMode(overrunStrategy = "next") {
 
 function leavePresentationMode() {
   pausePresentation();
+  stopSessionSubscription?.();
+  stopSessionSubscription = null;
+  activeSessionId = null;
+  sessionVersion = null;
+  localStorage.removeItem(LOCAL_SESSION_KEY);
   switchView(false);
   stopTicking();
   presentationSession = null;
 }
 
 function nextSlide() {
-  if (presentationSession.currentSlide >= state.pageCount) {
+  if (!presentationSession || presentationSession.currentSlide >= state.pageCount) {
     return;
   }
 
@@ -1461,7 +1507,7 @@ function nextSlide() {
 }
 
 function previousSlide() {
-  if (presentationSession.currentSlide <= 1) {
+  if (!presentationSession || presentationSession.currentSlide <= 1) {
     return;
   }
 
@@ -1501,10 +1547,14 @@ function resetPresentation() {
     return;
   }
 
-  presentationSession = createSessionState(state.slots[0]?.startSlide ?? 1);
+  presentationSession = {
+    ...createSessionState(state.slots[0]?.startSlide ?? 1),
+    id: activeSessionId || crypto.randomUUID(),
+  };
   elements.pauseBtn.disabled = false;
   elements.resumeBtn.disabled = true;
   persist();
+  syncPresentationSession();
   renderPresentationMetrics();
   renderCurrentSlide();
 }
@@ -1699,9 +1749,18 @@ function attachEvents() {
       return;
     }
     const selectedStrategy = document.querySelector('input[name="overrunStrategy"]:checked');
-    const startPresentation = enterPresentationMode(selectedStrategy?.value || "next");
-    openMonitoringView();
-    startPresentation.catch((error) => {
+    const monitoringUrl = new URL(window.location.href);
+    monitoringUrl.searchParams.set("view", "monitoring");
+    monitoringUrl.searchParams.delete("sessionId");
+    const monitoringWindow = window.open(
+      monitoringUrl.href,
+      `timekeeper-monitoring-${crypto.randomUUID()}`,
+    );
+    enterPresentationMode(selectedStrategy?.value || "next").then(() => {
+      if (activeSessionId) {
+        openMonitoringView(activeSessionId, monitoringWindow);
+      }
+    }).catch((error) => {
       console.error(error);
       window.alert(
         error.message || "Impossible de démarrer la présentation. Vérifiez le chargement du PDF.",
@@ -1832,7 +1891,6 @@ function attachEvents() {
 
 async function bootstrap() {
   attachEvents();
-  attachSessionChannel();
   renderConfiguration();
   hasUnsavedChanges = false;
   updateSaveButton();
@@ -1854,12 +1912,23 @@ async function bootstrap() {
   } catch (error) {
     console.error("Impossible de restaurer la session Supabase.", error);
   }
-  if (viewMode === "monitoring" || viewMode === "presentation") {
-    showApplication(viewMode);
+  if (activeSessionId) {
+    if (!user) {
+      showAccessScreen();
+      elements.accessError.textContent = "Connectez-vous avec le compte propriétaire pour ouvrir cette session.";
+      elements.accessError.hidden = false;
+    } else {
+      const accessToken = await getCurrentAccessToken();
+      showApplication("authenticated", user, accessToken);
+      await joinPresentationSession(activeSessionId);
+    }
+  } else if (viewMode === "monitoring") {
+    showApplication(user ? "authenticated" : "sandbox", user, user ? await getCurrentAccessToken() : null);
     switchView(true);
-    setPresentationDetailsCollapsed(viewMode === "presentation");
+    setPresentationDetailsCollapsed(false);
+    loadLocalSession();
   } else if (user) {
-    showApplication("authenticated", user);
+    showApplication("authenticated", user, await getCurrentAccessToken());
   } else {
     showAccessScreen();
   }
@@ -1875,6 +1944,12 @@ async function bootstrap() {
   } catch (error) {
     console.error("Impossible d'écouter la session Supabase.", error);
   }
+
+  window.addEventListener("storage", (event) => {
+    if (event.key === LOCAL_SESSION_KEY && event.newValue && !activeSessionId) {
+      loadLocalSession();
+    }
+  });
 }
 
 bootstrap().catch(console.error);

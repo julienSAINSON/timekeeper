@@ -74,6 +74,24 @@ test("Normalise un ancien projet et calcule son heure de fin", () => {
   equal(state.presentation, undefined);
 });
 
+test("Initialise la nouvelle configuration avec l'heure locale actuelle", () => {
+  const storageKey = "safe-timekeeper-config-v1";
+  const previousState = localStorage.getItem(storageKey);
+  try {
+    localStorage.removeItem(storageKey);
+    const expectedTime = new Date();
+    const state = loadState();
+    const expectedStartTime = `${String(expectedTime.getHours()).padStart(2, "0")}:${String(expectedTime.getMinutes()).padStart(2, "0")}`;
+    equal(state.plenary.startTime, expectedStartTime);
+  } finally {
+    if (previousState === null) {
+      localStorage.removeItem(storageKey);
+    } else {
+      localStorage.setItem(storageKey, previousState);
+    }
+  }
+});
+
 test("Calcule les heures de fin avec passage de minuit", () => {
   equal(getPlenaryEndTime({ startTime: "23:30", durationMinutes: 90 }), "01:00");
   equal(getPlenaryEndTime({ startTime: "23:30", durationMinutes: 0 }), "");
@@ -88,6 +106,9 @@ test("Crée un état de session isolé pour chaque présentation", () => {
   equal(secondSession.currentSlide, 8);
   equal(secondSession.slotOverrunsMs.slot, undefined);
   equal(secondSession.currentSlotId, undefined);
+  equal(firstSession.status, "active");
+  equal(firstSession.version, 1);
+  assert(firstSession.id !== secondSession.id, "Chaque session doit posséder un identifiant distinct.");
 });
 
 test("Le calcul du timer conserve le comportement de pause avec la session", () => {

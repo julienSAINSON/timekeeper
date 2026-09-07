@@ -38,6 +38,10 @@ export function initAuth(config) {
   return supabaseClient;
 }
 
+export function getSupabaseClient() {
+  return getClient();
+}
+
 /**
  * Ouvre le flux OAuth Google configuré dans Supabase.
  * @returns {Promise<void>}
@@ -82,6 +86,14 @@ export async function getCurrentUser() {
   }
 
   return data.user;
+}
+
+export async function getCurrentAccessToken() {
+  const { data, error } = await getClient().auth.getSession();
+  if (error) {
+    throw new Error(`Impossible de récupérer la session : ${error.message}`);
+  }
+  return data.session?.access_token || null;
 }
 
 /**

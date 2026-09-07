@@ -1,6 +1,8 @@
 export function createSessionState(firstSlide = 1) {
   return {
     id: crypto.randomUUID(),
+    status: "active",
+    version: 1,
     isRunning: false,
     isPaused: false,
     currentSlide: firstSlide,

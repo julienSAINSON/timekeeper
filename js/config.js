@@ -1,5 +1,10 @@
 const STORAGE_KEY = "safe-timekeeper-config-v1";
 
+function getCurrentLocalTime() {
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+}
+
 function createDefaultState() {
   return {
     projectName: "",
@@ -7,7 +12,7 @@ function createDefaultState() {
     pageCount: 0,
     slots: [],
     plenary: {
-      startTime: "",
+      startTime: getCurrentLocalTime(),
       endTime: "",
       durationMinutes: "",
     },

@@ -11,6 +11,7 @@ La suite couvre :
 - calculs de chronomètre, pauses, durées réduites et statuts ;
 - rendu de la timeline, retards, avance au démarrage et dépassements ;
 - non-double comptage du dépassement lorsqu'un créneau est revisité.
+- l'ouverture de l'onglet Monitoring depuis Présentation, sa route `?view=monitoring` et la navigation synchronisée dans les deux sens en bac à sable.
 
 ## Fixture PDF
 
@@ -39,3 +40,4 @@ jwebserver -p 8080 -d "CHEMIN_ABSOLU_VERS_LE_PROJET" -o none
 5. Dépasser un créneau, aller sur le créneau suivant puis revenir au précédent ; vérifier que le dépassement n'est pas doublé dans la timeline.
 6. Démarrer avant l'heure prévue ; vérifier que le segment d'avance disparaît progressivement et que le curseur reste à gauche jusqu'à l'heure prévue.
 7. Lancer le tutoriel sur écran large et mobile ; vérifier l'ouverture éclairée, les cinq étapes, les boutons, les flèches et `Échap`.
+8. Connecté avec Google, sauvegarder un projet puis démarrer la plénière. Vérifier que les URL Présentation et Monitoring contiennent le même paramètre `sessionId`, que navigation et pause/reprise se reflètent dans les deux sens, puis recharger l'un des deux onglets. L'état de session doit être restauré ; réimporter le PDF dans Présentation pour retrouver le rendu après rechargement.
