@@ -430,102 +430,113 @@ grant execute on function public.create_public_session_question(text, text) to a
 grant execute on function public.get_owned_session_questions(uuid) to authenticated;
 grant execute on function public.update_owned_session_question_status(uuid, text) to authenticated;
 
-create table if not exists public.tk_session_quizzes (
-  id uuid primary key default gen_random_uuid(),
-  session_id uuid not null references public.tk_presentation_sessions(id) on delete cascade,
-  slot_id text not null,
-  question text not null check (char_length(btrim(question)) > 0),
-  options jsonb not null check (jsonb_typeof(options) = 'array' and jsonb_array_length(options) between 2 and 4),
-  correct_option_id text,
-  created_at timestamptz not null default now(),
-  unique (session_id, slot_id)
-);
+drop function if exists public.save_owned_session_quiz(uuid, text, text, jsonb, text);
+drop function if exists public.get_owned_active_session_quiz(uuid, text);
+drop function if exists public.get_owned_quiz_response_count(uuid);
+drop function if exists public.submit_public_quiz_response(text, uuid, uuid, text);
+drop table if exists public.tk_quiz_responses;
+drop table if exists public.tk_session_quizzes;
 
-create table if not exists public.tk_quiz_responses (
+create table public.tk_quiz_responses (
   id uuid primary key default gen_random_uuid(),
-  quiz_id uuid not null references public.tk_session_quizzes(id) on delete cascade,
   session_id uuid not null references public.tk_presentation_sessions(id) on delete cascade,
+  quiz_id uuid not null,
   participant_id uuid not null,
   option_id text not null,
   created_at timestamptz not null default now(),
-  unique (quiz_id, participant_id)
+  unique (session_id, quiz_id, participant_id)
 );
 
-alter table public.tk_session_quizzes enable row level security;
 alter table public.tk_quiz_responses enable row level security;
 
-drop policy if exists "Owners can read quiz responses" on public.tk_quiz_responses;
-create policy "Owners can read quiz responses" on public.tk_quiz_responses for select to authenticated
-using (exists (
-  select 1 from public.tk_session_quizzes quiz
-  join public.tk_presentation_sessions session on session.id = quiz.session_id
-  where quiz.id = quiz_id and session.user_id = auth.uid()
-));
-
-do $$ begin
-  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'tk_quiz_responses') then
-    alter publication supabase_realtime add table public.tk_quiz_responses;
-  end if;
-end; $$;
-
-create or replace function public.save_owned_session_quiz(p_session_id uuid, p_slot_id text, p_question text, p_options jsonb, p_correct_option_id text)
-returns jsonb language plpgsql security definer set search_path = '' as $$
-declare saved public.tk_session_quizzes%rowtype;
-begin
-  if auth.uid() is null or not exists (select 1 from public.tk_presentation_sessions where id = p_session_id and user_id = auth.uid()) then raise exception 'Session introuvable ou non autorisée.'; end if;
-  if char_length(btrim(coalesce(p_question, ''))) = 0 or coalesce(jsonb_typeof(p_options), '') <> 'array' or jsonb_array_length(p_options) not between 2 and 4 then raise exception 'Quiz invalide.'; end if;
-  insert into public.tk_session_quizzes (session_id, slot_id, question, options, correct_option_id)
-  values (p_session_id, p_slot_id, btrim(p_question), p_options, p_correct_option_id)
-  on conflict (session_id, slot_id) do update set question = excluded.question, options = excluded.options, correct_option_id = excluded.correct_option_id
-  returning * into saved;
-  return jsonb_build_object('id', saved.id, 'question', saved.question, 'options', saved.options, 'correctOptionId', saved.correct_option_id);
-end; $$;
-
-create or replace function public.get_owned_active_session_quiz(p_session_id uuid, p_slot_id text)
-returns jsonb language sql security definer set search_path = '' as $$
-  select jsonb_build_object('id', quiz.id, 'question', quiz.question, 'options', quiz.options, 'correctOptionId', quiz.correct_option_id)
-  from public.tk_session_quizzes quiz join public.tk_presentation_sessions session on session.id = quiz.session_id
-  where quiz.session_id = p_session_id and quiz.slot_id = p_slot_id and session.user_id = auth.uid();
-$$;
-
-create or replace function public.get_owned_quiz_response_count(p_quiz_id uuid)
-returns integer language sql security definer set search_path = '' as $$
-  select count(*)::integer from public.tk_quiz_responses response join public.tk_session_quizzes quiz on quiz.id = response.quiz_id
-  join public.tk_presentation_sessions session on session.id = quiz.session_id where response.quiz_id = p_quiz_id and session.user_id = auth.uid();
+create or replace function public.is_valid_project_quiz(p_quiz jsonb)
+returns boolean language sql immutable set search_path = '' as $$
+  select jsonb_typeof(p_quiz) = 'object'
+    and p_quiz->>'id' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    and char_length(btrim(coalesce(p_quiz->>'question', ''))) > 0
+    and jsonb_typeof(p_quiz->'options') = 'array'
+    and jsonb_array_length(case when jsonb_typeof(p_quiz->'options') = 'array' then p_quiz->'options' else '[]'::jsonb end) = 4
+    and (select count(*) from jsonb_array_elements(case when jsonb_typeof(p_quiz->'options') = 'array' then p_quiz->'options' else '[]'::jsonb end) option where char_length(btrim(coalesce(option->>'label', ''))) > 0) between 2 and 4
+    and (select count(*) = 4 and count(distinct option->>'id') = 4 and bool_and(option->>'id' in ('A', 'B', 'C', 'D')) from jsonb_array_elements(case when jsonb_typeof(p_quiz->'options') = 'array' then p_quiz->'options' else '[]'::jsonb end) option)
+    and exists (select 1 from jsonb_array_elements(case when jsonb_typeof(p_quiz->'options') = 'array' then p_quiz->'options' else '[]'::jsonb end) option where option->>'id' = p_quiz->>'correctOptionId' and char_length(btrim(coalesce(option->>'label', ''))) > 0);
 $$;
 
 create or replace function public.get_public_room_activity(p_room_token text, p_participant_id uuid)
 returns jsonb language sql security definer set search_path = '' as $$
   with current_room as (
-    select session.id as session_id, session.state, project.state as project_state from public.tk_public_session_rooms room
-    join public.tk_presentation_sessions session on session.id = room.session_id join public.tk_shared_plenaries project on project.id = session.project_id
+    select session.id as session_id, session.state, project.state as project_state
+    from public.tk_public_session_rooms room
+    join public.tk_presentation_sessions session on session.id = room.session_id
+    join public.tk_shared_plenaries project on project.id = session.project_id
     where room.room_token = p_room_token and session.status = 'active'
-  ), active_slot as (
-    select current_room.session_id, slot->>'id' as slot_id from current_room, jsonb_array_elements(current_room.project_state->'slots') slot
-    where (slot->>'type') = 'quiz' and (current_room.state->>'currentSlide')::integer between (slot->>'startSlide')::integer and (slot->>'endSlide')::integer
+  ), active_quiz as (
+    select current_room.session_id, slot->'quiz' as quiz
+    from current_room
+    cross join lateral jsonb_array_elements(coalesce(current_room.project_state->'slots', '[]'::jsonb)) slot
+    where slot->>'type' = 'quiz'
+      and (current_room.state->>'currentSlide')::integer between (slot->>'startSlide')::integer and (slot->>'endSlide')::integer
+      and public.is_valid_project_quiz(slot->'quiz')
   )
-  select jsonb_build_object('quiz', case when quiz.id is null then null else jsonb_build_object('id', quiz.id, 'question', quiz.question, 'options', quiz.options, 'hasResponded', exists(select 1 from public.tk_quiz_responses response where response.quiz_id = quiz.id and response.participant_id = p_participant_id)) end)
-  from active_slot slot left join public.tk_session_quizzes quiz on quiz.session_id = slot.session_id and quiz.slot_id = slot.slot_id;
+  select coalesce((
+    select jsonb_build_object(
+      'quiz', jsonb_build_object(
+        'id', quiz->>'id',
+        'question', quiz->>'question',
+        'options', (select jsonb_agg(jsonb_build_object('id', option->>'id', 'label', option->>'label')) from jsonb_array_elements(quiz->'options') option where char_length(btrim(coalesce(option->>'label', ''))) > 0),
+        'hasResponded', exists (select 1 from public.tk_quiz_responses response where response.session_id = active_quiz.session_id and response.quiz_id = (quiz->>'id')::uuid and response.participant_id = p_participant_id)
+      )
+    ) from active_quiz
+  ), jsonb_build_object('quiz', null));
 $$;
 
-create or replace function public.submit_public_quiz_response(p_room_token text, p_participant_id uuid, p_quiz_id uuid, p_option_id text)
+create or replace function public.submit_public_quiz_response(p_room_token text, p_participant_id uuid, p_option_id text)
 returns void language plpgsql security definer set search_path = '' as $$
 begin
-  insert into public.tk_quiz_responses (quiz_id, session_id, participant_id, option_id)
-  select quiz.id, session.id, p_participant_id, p_option_id from public.tk_public_session_rooms room
-  join public.tk_presentation_sessions session on session.id = room.session_id join public.tk_shared_plenaries project on project.id = session.project_id
-  join public.tk_session_quizzes quiz on quiz.id = p_quiz_id and quiz.session_id = session.id
-  where room.room_token = p_room_token and session.status = 'active' and exists (
-    select 1 from jsonb_array_elements(project.state->'slots') slot where slot->>'id' = quiz.slot_id and slot->>'type' = 'quiz'
-    and (session.state->>'currentSlide')::integer between (slot->>'startSlide')::integer and (slot->>'endSlide')::integer
-  ) and exists (select 1 from jsonb_array_elements(quiz.options) option where option->>'id' = p_option_id);
-  if not found then raise exception 'Quiz indisponible.'; end if;
-end; $$;
+  if p_room_token !~ '^[A-Za-z0-9_-]{43}$' or char_length(btrim(coalesce(p_option_id, ''))) = 0 then
+    raise exception 'Quiz indisponible.';
+  end if;
 
-revoke all on table public.tk_session_quizzes, public.tk_quiz_responses from anon, authenticated;
-grant select on table public.tk_quiz_responses to authenticated;
-revoke all on function public.save_owned_session_quiz(uuid, text, text, jsonb, text), public.get_owned_active_session_quiz(uuid, text), public.get_owned_quiz_response_count(uuid), public.get_public_room_activity(text, uuid), public.submit_public_quiz_response(text, uuid, uuid, text) from public;
-grant execute on function public.save_owned_session_quiz(uuid, text, text, jsonb, text), public.get_owned_active_session_quiz(uuid, text), public.get_owned_quiz_response_count(uuid) to authenticated;
-grant execute on function public.get_public_room_activity(text, uuid), public.submit_public_quiz_response(text, uuid, uuid, text) to anon, authenticated;
+  insert into public.tk_quiz_responses (session_id, quiz_id, participant_id, option_id)
+  select session.id, (slot->'quiz'->>'id')::uuid, p_participant_id, p_option_id
+  from public.tk_public_session_rooms room
+  join public.tk_presentation_sessions session on session.id = room.session_id
+  join public.tk_shared_plenaries project on project.id = session.project_id
+  cross join lateral jsonb_array_elements(coalesce(project.state->'slots', '[]'::jsonb)) slot
+  where room.room_token = p_room_token
+    and session.status = 'active'
+    and slot->>'type' = 'quiz'
+    and (session.state->>'currentSlide')::integer between (slot->>'startSlide')::integer and (slot->>'endSlide')::integer
+    and public.is_valid_project_quiz(slot->'quiz')
+    and exists (select 1 from jsonb_array_elements(slot->'quiz'->'options') option where option->>'id' = p_option_id and char_length(btrim(coalesce(option->>'label', ''))) > 0)
+
+  if not found then
+    raise exception 'Quiz indisponible.';
+  end if;
+end;
+$$;
+
+create or replace function public.get_owned_quiz_response_summary(p_session_id uuid, p_quiz_id uuid)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+begin
+  if auth.uid() is null or not exists (
+    select 1 from public.tk_presentation_sessions session
+    where session.id = p_session_id and session.user_id = auth.uid()
+  ) then
+    raise exception 'Session introuvable ou non autorisée.';
+  end if;
+
+  return jsonb_build_object(
+    'sessionId', p_session_id,
+    'quizId', p_quiz_id,
+    'responseCount', (select count(*) from public.tk_quiz_responses response where response.session_id = p_session_id and response.quiz_id = p_quiz_id)
+  );
+end;
+$$;
+
+revoke all on table public.tk_quiz_responses from anon, authenticated;
+revoke all on function public.is_valid_project_quiz(jsonb) from public;
+revoke all on function public.get_public_room_activity(text, uuid), public.submit_public_quiz_response(text, uuid, text), public.get_owned_quiz_response_summary(uuid, uuid) from public;
+grant execute on function public.get_public_room_activity(text, uuid), public.submit_public_quiz_response(text, uuid, text) to anon, authenticated;
+grant execute on function public.get_owned_quiz_response_summary(uuid, uuid) to authenticated;
 
 notify pgrst, 'reload schema';

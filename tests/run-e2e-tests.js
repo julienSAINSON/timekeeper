@@ -212,6 +212,22 @@ test("Crée les types de créneaux et une séquence interactive avec le wizard",
     equal(slots[2].startSlide, 3);
     equal(slots[2].endSlide, 3);
     equal(slots[2].durationMinutes, 1);
+    assert(typeof slots[2].quiz.id === "string" && slots[2].quiz.id, "Le Quiz doit recevoir un identifiant à sa création.");
+    equal(slots[2].quiz.options.map((option) => option.id).join(""), "ABCD");
+
+    const quizSlotId = slots[2].id;
+    const quizConfigurationId = slots[2].quiz.id;
+    updateInput(documentToTest, `#quiz-question-${quizSlotId}`, "Quelle donnée appartient au projet ?");
+    updateInput(documentToTest, `#quiz-option-${quizSlotId}-A`, "ProjectState");
+    updateInput(documentToTest, `#quiz-option-${quizSlotId}-B`, "SessionState");
+    const correctOption = documentToTest.querySelector(`#quiz-correct-option-${quizSlotId}`);
+    assert([...correctOption.options].some((option) => option.text === "A - ProjectState"), "Le choix A doit suivre la proposition renseignée.");
+    correctOption.value = "A";
+    correctOption.dispatchEvent(new Event("change", { bubbles: true }));
+    slots = storedSlots(documentToTest);
+    equal(slots[2].quiz.question, "Quelle donnée appartient au projet ?");
+    equal(slots[2].quiz.correctOptionId, "A");
+    equal(slots[2].quiz.id, quizConfigurationId, "L'identifiant du Quiz doit rester stable.");
 
     documentToTest.querySelector("#addSlotBtn").click();
     chooseWizardType(documentToTest, "presentation");
@@ -254,6 +270,7 @@ test("Crée les types de créneaux et une séquence interactive avec le wizard",
     equal(slots[3].startSlide, 5);
     equal(slots[3].endSlide, 5);
     equal(slots[3].durationMinutes, 1);
+    assert(typeof slots[3].quiz.id === "string" && slots[3].quiz.id, "Le Quiz créé par une séquence interactive doit être initialisé.");
     assert(documentToTest.querySelector("#validationList").textContent.includes("Slides non couvertes: 6"), "La validation de couverture existante doit rester active.");
   } finally {
     if (previousState === null) {

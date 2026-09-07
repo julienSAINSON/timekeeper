@@ -76,9 +76,9 @@ Après chaque évolution, exécutez tout le script [supabase/schema.sql](supabas
 
 ## Quiz interactif
 
-Les créneaux existants de type `quiz` peuvent être configurés dans Monitoring lorsqu'ils deviennent actifs : le MC renseigne une question, deux à quatre propositions et, facultativement, la bonne réponse. Cette dernière reste dans `tk_session_quizzes` et n'est jamais incluse dans le DTO public.
+Le contenu d'un Quiz se prépare dans la page Configuration, directement dans la carte de son créneau : question, deux à quatre propositions et bonne réponse. Il est sauvegardé dans le projet et peut donc être réutilisé lors de plusieurs plénières.
 
-Le Room reçoit l'activité du créneau par un Broadcast Realtime associé à son token opaque, puis charge un DTO public. À l'entrée d'un créneau Quiz, il affiche automatiquement les propositions ; à la sortie, il revient au formulaire de question. Un identifiant technique anonyme persistant dans le navigateur garantit avec la contrainte SQL `unique (quiz_id, participant_id)` qu'une réponse ne peut être enregistrée qu'une fois, même après rechargement.
+Les réponses sont stockées séparément dans `tk_quiz_responses`, avec les identifiants de session, Quiz, participant anonyme et option choisie. Le serveur résout le Room, la session active et le slot Quiz depuis le projet avant toute insertion : le client ne transmet ni session, ni Quiz, ni bonne réponse. La contrainte `unique (session_id, quiz_id, participant_id)` rend l'enregistrement atomique. La lecture publique ne retourne que `id`, `question`, `options` et `hasResponded`; la bonne réponse reste dans le `ProjectState` et n'est jamais transmise.
 
 ## Accès Google et bac à sable
 

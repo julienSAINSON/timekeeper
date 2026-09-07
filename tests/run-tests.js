@@ -6,7 +6,7 @@ import {
   saveState,
   validatePlenary,
   validateSlots,
-} from "../js/config.js?v=presentation-monitoring-v1";
+} from "../js/config.js?v=quiz-project-config-v1";
 import { createSessionState } from "../js/session.js";
 import {
   generateRoomToken,
@@ -21,7 +21,13 @@ import {
   isQuestionStatus,
   validateQuestionText,
 } from "../js/questions.js";
-import { getParticipantId, validateQuizDraft } from "../js/quiz.js";
+import {
+  createQuizConfiguration,
+  getParticipantId,
+  normalizeQuizConfiguration,
+  validateQuizConfiguration,
+  validateQuizDraft,
+} from "../js/quiz.js?v=quiz-project-config-v1";
 import {
   formatClock,
   getCurrentSlot,
@@ -134,6 +140,70 @@ test("Valide un quiz de deux à quatre propositions", () => {
   assert(!validateQuizDraft("", ["A", "B"]).valid, "La question est obligatoire.");
   assert(!validateQuizDraft("Question", ["A"]).valid, "Deux propositions sont requises.");
   assert(!validateQuizDraft("Question", ["A", "B", "C", "D", "E"]).valid, "Quatre propositions au maximum.");
+});
+
+test("Normalise un slot Quiz ancien sans perdre sa configuration", () => {
+  const normalized = normalizeState({
+    slots: [{
+      id: "quiz-slot",
+      name: "Quiz",
+      type: "quiz",
+      startSlide: 2,
+      endSlide: 2,
+      durationMinutes: 2,
+      quiz: {
+        id: "quiz-config-id",
+        question: "Quelle est la source de vérité ?",
+        options: [{ id: "A", label: "ProjectState" }, { id: "B", label: "SessionState" }],
+        correctOptionId: "B",
+      },
+    }],
+  }).slots[0];
+  equal(normalized.quiz.id, "quiz-config-id");
+  equal(normalized.quiz.question, "Quelle est la source de vérité ?");
+  equal(normalized.quiz.options[0].label, "ProjectState");
+  equal(normalized.quiz.options[3].label, "");
+  equal(normalized.quiz.correctOptionId, "B");
+});
+
+test("Initialise et valide la configuration d'un Quiz de projet", () => {
+  const quiz = createQuizConfiguration();
+  equal(quiz.options.map((option) => option.id).join(""), "ABCD");
+  assert(!validateQuizConfiguration(quiz).valid, "Un Quiz vide doit être incomplet.");
+
+  quiz.question = "Quel état est persistant ?";
+  quiz.options[0].label = "ProjectState";
+  quiz.options[1].label = "SessionState";
+  quiz.correctOptionId = "A";
+  assert(validateQuizConfiguration(quiz).valid, "Deux propositions et une bonne réponse doivent suffire.");
+
+  quiz.options[2].label = "PDF";
+  quiz.options[3].label = "Room";
+  assert(validateQuizConfiguration(quiz).valid, "Quatre propositions renseignées doivent être valides.");
+  quiz.correctOptionId = "D";
+  assert(validateQuizConfiguration(quiz).valid);
+  quiz.options[3].label = "";
+  assert(!validateQuizConfiguration(quiz).valid, "La bonne réponse doit désigner une proposition renseignée.");
+});
+
+test("Préserve l'identifiant et les options du Quiz lors de la persistence locale", () => {
+  const storageKey = "safe-timekeeper-config-v1";
+  const previousState = localStorage.getItem(storageKey);
+  try {
+    const quiz = normalizeQuizConfiguration({
+      id: "stable-quiz-id",
+      question: "Question préparée",
+      options: [{ id: "A", label: "Une" }, { id: "B", label: "Deux" }, { id: "C", label: "Trois" }, { id: "D", label: "Quatre" }],
+      correctOptionId: "C",
+    });
+    saveState({ projectName: "Quiz", slots: [{ id: "quiz-slot", name: "Quiz", type: "quiz", startSlide: 1, endSlide: 1, durationMinutes: 1, optional: false, quiz }], plenary: { startTime: "09:00", durationMinutes: 10 } });
+    const restoredQuiz = loadState().slots[0].quiz;
+    equal(restoredQuiz.id, "stable-quiz-id");
+    equal(restoredQuiz.options.map((option) => option.label).join(","), "Une,Deux,Trois,Quatre");
+    equal(restoredQuiz.correctOptionId, "C");
+  } finally {
+    if (previousState === null) localStorage.removeItem(storageKey); else localStorage.setItem(storageKey, previousState);
+  }
 });
 
 test("Conserve l'identifiant technique anonyme du participant", () => {

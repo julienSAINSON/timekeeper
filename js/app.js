@@ -7,7 +7,7 @@ import {
   getPlenaryEndTime,
   validatePlenary,
   validateSlots,
-} from "./config.js?v=presentation-monitoring-v1";
+} from "./config.js?v=quiz-project-config-v1";
 import { getPdfDocument, loadPdfDocument, renderPage } from "./pdfViewer.js";
 import {
   formatClock,
@@ -29,16 +29,13 @@ import {
   isQuestionStatus,
   validateQuestionText,
 } from "./questions.js";
-import { getParticipantId, validateQuizDraft } from "./quiz.js";
+import { createQuizConfiguration, validateQuizConfiguration } from "./quiz.js";
 import { calculateSlotReductions } from "./overrun.js";
 import { renderTimeline } from "./timeline.js";
 import {
   createPresentationSession,
   createPublicSessionRoom,
   createPublicSessionQuestion,
-  getOwnedActiveSessionQuiz,
-  getOwnedQuizResponseCount,
-  getPublicRoomActivity,
   createSharedPlenary,
   deleteSharedPlenary,
   forgetProject,
@@ -53,14 +50,9 @@ import {
   setAuthAccessToken,
   subscribeToPresentationSession,
   subscribeToSessionQuestions,
-  subscribeToPublicRoomActivity,
-  subscribeToQuizResponses,
-  submitPublicQuizResponse,
-  saveOwnedSessionQuiz,
-  publishPublicRoomActivity,
   updateOwnedSessionQuestionStatus,
   updatePresentationSession,
-} from "./supabase.js?v=audience-questions-v1";
+} from "./supabase.js?v=quiz-responses-session-v1";
 import {
   getCurrentAccessToken,
   getCurrentUser,
@@ -87,10 +79,6 @@ let activeRoomToken = null;
 let sessionVersion = null;
 let stopSessionSubscription = null;
 let stopQuestionsSubscription = null;
-let stopPublicRoomActivity = null;
-let stopQuizResponsesSubscription = null;
-let activeQuiz = null;
-let quizResponseCount = 0;
 let sessionWriteQueue = Promise.resolve();
 let sessionQuestions = [];
 let selectedQuestionId = null;
@@ -278,12 +266,6 @@ const elements = {
   selectedQuestionStatus: document.querySelector("#selectedQuestionStatus"),
   answerQuestionBtn: document.querySelector("#answerQuestionBtn"),
   dismissQuestionBtn: document.querySelector("#dismissQuestionBtn"),
-  publicQuiz: document.querySelector("#publicQuiz"), publicQuizForm: document.querySelector("#publicQuizForm"),
-  publicQuizQuestion: document.querySelector("#publicQuizQuestion"), publicQuizOptions: document.querySelector("#publicQuizOptions"),
-  publicQuizSubmit: document.querySelector("#publicQuizSubmit"), publicQuizFeedback: document.querySelector("#publicQuizFeedback"),
-  quizPanel: document.querySelector("#quizPanel"), quizActiveStatus: document.querySelector("#quizActiveStatus"),
-  quizEditor: document.querySelector("#quizEditor"), quizQuestionInput: document.querySelector("#quizQuestionInput"),
-  quizCorrectOption: document.querySelector("#quizCorrectOption"), quizEditorFeedback: document.querySelector("#quizEditorFeedback"),
 };
 
 function showApplication(mode, user = null, accessToken = null) {
@@ -737,6 +719,13 @@ function renderSlots() {
   }
 
   state.slots.forEach((slot, index) => {
+    const quiz = slot.type === "quiz" ? slot.quiz : null;
+    const quizOptions = quiz?.options.filter((option) => option.label.trim()) || [];
+    const correctOptionChoices = quizOptions.map((option) => `
+      <option value="${option.id}" ${quiz.correctOptionId === option.id ? "selected" : ""}>
+        ${option.id} - ${escapeHtml(option.label)}
+      </option>
+    `).join("");
     const article = document.createElement("article");
     article.className = "slot-card";
     article.innerHTML = `
@@ -763,6 +752,31 @@ function renderSlots() {
           <button type="button" class="danger-button" data-remove="${slot.id}">Supprimer</button>
         </div>
       </div>
+      ${quiz ? `
+        <fieldset class="quiz-configuration" data-quiz-slot-id="${slot.id}">
+          <legend>Configuration du quiz</legend>
+          <div class="field">
+            <label for="quiz-question-${slot.id}">Question du quiz</label>
+            <textarea id="quiz-question-${slot.id}" data-quiz-slot-id="${slot.id}" data-quiz-field="question">${escapeHtml(quiz.question)}</textarea>
+          </div>
+          <div class="quiz-configuration-options">
+            ${quiz.options.map((option) => `
+              <div class="field">
+                <label for="quiz-option-${slot.id}-${option.id}">Proposition ${option.id}${option.id === "A" || option.id === "B" ? "" : " (facultative)"}</label>
+                <input id="quiz-option-${slot.id}-${option.id}" type="text" value="${escapeHtml(option.label)}" data-quiz-slot-id="${slot.id}" data-quiz-option-id="${option.id}" />
+              </div>
+            `).join("")}
+          </div>
+          <div class="field">
+            <label for="quiz-correct-option-${slot.id}">Bonne réponse</label>
+            <select id="quiz-correct-option-${slot.id}" data-quiz-slot-id="${slot.id}" data-quiz-field="correctOptionId">
+              <option value="">Choisir une proposition</option>
+              ${correctOptionChoices}
+            </select>
+          </div>
+          <p class="quiz-configuration-status">${validateQuizConfiguration(quiz).error || "Quiz prêt pour la plénière."}</p>
+        </fieldset>
+      ` : ""}
     `;
     elements.slotsList.appendChild(article);
   });
@@ -862,6 +876,33 @@ function updateSlot(slotId, field, value, skipFullRender = false) {
   } else {
     renderConfiguration();
   }
+}
+
+function refreshQuizCorrectOption(slot) {
+  const select = elements.slotsList.querySelector(`#quiz-correct-option-${slot.id}`);
+  if (!select) return;
+  const options = slot.quiz.options.filter((option) => option.label.trim());
+  select.replaceChildren(
+    new Option("Choisir une proposition", ""),
+    ...options.map((option) => new Option(`${option.id} - ${option.label}`, option.id, false, slot.quiz.correctOptionId === option.id)),
+  );
+}
+
+function updateQuizSlot(slotId, field, value) {
+  const slot = state.slots.find((item) => item.id === slotId && item.type === "quiz");
+  if (!slot?.quiz) return;
+  if (field === "question" || field === "correctOptionId") {
+    slot.quiz[field] = value;
+  } else if (field === "option") {
+    const option = slot.quiz.options.find((item) => item.id === value.id);
+    if (!option) return;
+    option.label = value.label;
+    if (slot.quiz.correctOptionId === option.id && !option.label.trim()) slot.quiz.correctOptionId = "";
+  }
+  persist();
+  refreshQuizCorrectOption(slot);
+  const status = elements.slotsList.querySelector(`[data-quiz-slot-id="${slot.id}"] .quiz-configuration-status`);
+  if (status) status.textContent = validateQuizConfiguration(slot.quiz).error || "Quiz prêt pour la plénière.";
 }
 
 function createSequentialSlot() {
@@ -1002,11 +1043,12 @@ function createSlotsFromWizard() {
     endSlide: slotEndSlide,
     durationMinutes,
     optional: false,
+    ...(slotWizard.type === "quiz" ? { quiz: createQuizConfiguration() } : {}),
   }];
   if (slotWizard.structure === "interactive") {
     slotsToAdd.push(
       { id: crypto.randomUUID(), name: "Question", type: "question", startSlide: endSlide + 1, endSlide: endSlide + 1, durationMinutes: 1, optional: false },
-      { id: crypto.randomUUID(), name: "Quiz", type: "quiz", startSlide: endSlide + 2, endSlide: endSlide + 2, durationMinutes: 1, optional: false },
+      { id: crypto.randomUUID(), name: "Quiz", type: "quiz", startSlide: endSlide + 2, endSlide: endSlide + 2, durationMinutes: 1, optional: false, quiz: createQuizConfiguration() },
     );
   }
 
@@ -1100,81 +1142,11 @@ async function loadPublicRoom(roomToken) {
     elements.publicRoomDetail.textContent = room.isRunning
       ? "La session est en cours. Restez sur cette page pour participer aux prochaines activités."
       : "En attente du début de la session.";
-    initAuth({ supabaseUrl: SUPABASE_URL, supabaseAnonKey: SUPABASE_ANON_KEY });
-    stopPublicRoomActivity?.();
-    stopPublicRoomActivity = subscribeToPublicRoomActivity(roomToken, () => refreshPublicRoomActivity());
-    await refreshPublicRoomActivity();
   } catch (error) {
     console.error("Impossible de rejoindre le Room.", error);
     elements.publicRoomStatus.textContent = "Cette session n'est plus disponible";
     elements.publicRoomDetail.textContent = "Le lien est invalide ou la session est terminée.";
   }
-}
-
-function renderPublicQuiz(activity) {
-  const quiz = activity?.quiz;
-  elements.publicQuiz.hidden = !quiz;
-  elements.publicQuestionForm.hidden = Boolean(quiz);
-  if (!quiz) return;
-  activeQuiz = quiz;
-  elements.publicQuizQuestion.textContent = quiz.question;
-  elements.publicQuizOptions.replaceChildren(...quiz.options.map((option) => {
-    const label = document.createElement("label");
-    label.className = "quiz-option";
-    const input = document.createElement("input"); input.type = "radio"; input.name = "quizOption"; input.value = option.id; input.disabled = quiz.hasResponded;
-    label.append(input, document.createTextNode(`${option.id} - ${option.label}`));
-    return label;
-  }));
-  elements.publicQuizSubmit.disabled = quiz.hasResponded;
-  elements.publicQuizFeedback.textContent = quiz.hasResponded ? "Réponse enregistrée" : "";
-}
-
-async function refreshPublicRoomActivity() {
-  try {
-    const activity = await getPublicRoomActivity(publicRoomToken, getParticipantId());
-    renderPublicQuiz(activity);
-  } catch (error) { console.error("Impossible d'actualiser l'activité du Room.", error); }
-}
-
-async function renderQuizMonitoring() {
-  const slot = presentationSession && getCurrentSlot(getSlotTiming(state.slots, presentationSession.slotReductionsMs), presentationSession.currentSlide);
-  const isMonitoringQuiz = viewMode === "monitoring" && slot?.type === "quiz" && activeSessionId;
-  elements.quizPanel.hidden = !isMonitoringQuiz;
-  if (!isMonitoringQuiz) return;
-  activeQuiz = await getOwnedActiveSessionQuiz(activeSessionId, slot.id);
-  elements.quizEditor.hidden = Boolean(activeQuiz);
-  elements.quizActiveStatus.textContent = activeQuiz ? `Quiz actif - ${quizResponseCount} réponse${quizResponseCount > 1 ? "s" : ""}` : "Configurez le quiz de ce créneau.";
-  if (activeQuiz) {
-    quizResponseCount = await getOwnedQuizResponseCount(activeQuiz.id);
-    elements.quizActiveStatus.textContent = `Quiz actif - ${quizResponseCount} réponse${quizResponseCount > 1 ? "s" : ""}`;
-    stopQuizResponsesSubscription?.();
-    stopQuizResponsesSubscription = subscribeToQuizResponses(activeQuiz.id, () => { quizResponseCount += 1; elements.quizActiveStatus.textContent = `Quiz actif - ${quizResponseCount} réponse${quizResponseCount > 1 ? "s" : ""}`; });
-  }
-}
-
-async function saveQuizFromEditor(event) {
-  event.preventDefault();
-  const slot = presentationSession && getCurrentSlot(getSlotTiming(state.slots, presentationSession.slotReductionsMs), presentationSession.currentSlide);
-  const result = validateQuizDraft(elements.quizQuestionInput.value, [...elements.quizEditor.querySelectorAll("[data-quiz-option]")].map((input) => input.value));
-  if (!result.valid || !slot || !activeSessionId) { elements.quizEditorFeedback.textContent = result.error; return; }
-  try {
-    activeQuiz = await saveOwnedSessionQuiz(activeSessionId, slot.id, result.quiz.question, result.quiz.options, elements.quizCorrectOption.value);
-    elements.quizEditorFeedback.textContent = "Quiz enregistré";
-    await publishPublicRoomActivity(activeRoomToken);
-    await renderQuizMonitoring();
-  } catch (error) { elements.quizEditorFeedback.textContent = "Impossible d'enregistrer le quiz."; console.error(error); }
-}
-
-async function submitPublicQuiz(event) {
-  event.preventDefault();
-  const selected = elements.publicQuizOptions.querySelector("input:checked");
-  if (!selected || !activeQuiz) return;
-  elements.publicQuizSubmit.disabled = true;
-  try {
-    await submitPublicQuizResponse(publicRoomToken, getParticipantId(), activeQuiz.id, selected.value);
-    elements.publicQuizFeedback.textContent = "Réponse enregistrée";
-    elements.publicQuizOptions.querySelectorAll("input").forEach((input) => { input.disabled = true; });
-  } catch (error) { elements.publicQuizFeedback.textContent = "Cette réponse est indisponible."; console.error(error); }
 }
 
 function renderQuestions() {
@@ -1227,7 +1199,6 @@ function upsertQuestion(question) {
     sessionQuestions[index] = question;
   }
   renderQuestions();
-  renderQuizMonitoring().catch((error) => console.error("Impossible de charger le quiz.", error));
 }
 
 async function loadQuestionsForMonitoring(sessionId) {
@@ -1812,7 +1783,6 @@ function nextSlide() {
   }
   renderCurrentSlide();
   renderPresentationMetrics();
-  renderQuizMonitoring().catch((error) => console.error("Impossible de charger le quiz.", error));
   syncPresentationSession();
 }
 
@@ -1824,7 +1794,6 @@ function previousSlide() {
   presentationSession.currentSlide -= 1;
   renderCurrentSlide();
   renderPresentationMetrics();
-  renderQuizMonitoring().catch((error) => console.error("Impossible de charger le quiz.", error));
   syncPresentationSession();
 }
 
@@ -2014,19 +1983,33 @@ function attachEvents() {
 
   elements.slotsList.addEventListener("input", (event) => {
     const target = event.target;
-    if (!(target instanceof HTMLInputElement)) {
+    if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) {
       return;
     }
-
+    if (target.dataset.quizField === "question") {
+      updateQuizSlot(target.dataset.quizSlotId, "question", target.value);
+      return;
+    }
+    if (target.dataset.quizOptionId) {
+      updateQuizSlot(target.dataset.quizSlotId, "option", { id: target.dataset.quizOptionId, label: target.value });
+      return;
+    }
     updateSlot(target.dataset.slotId, target.dataset.field, target.value, true);
   });
 
   elements.slotsList.addEventListener("change", (event) => {
     const target = event.target;
-    if (!(target instanceof HTMLInputElement)) {
+    if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement)) {
       return;
     }
-
+    if (target.dataset.quizField) {
+      updateQuizSlot(target.dataset.quizSlotId, target.dataset.quizField, target.value);
+      return;
+    }
+    if (target.dataset.quizOptionId) {
+      updateQuizSlot(target.dataset.quizSlotId, "option", { id: target.dataset.quizOptionId, label: target.value });
+      return;
+    }
     updateSlot(target.dataset.slotId, target.dataset.field, target.value);
   });
 
@@ -2089,11 +2072,8 @@ function attachEvents() {
   elements.resumeBtn.addEventListener("click", resumePresentation);
   elements.exportReportBtn.addEventListener("click", exportPresentationReport);
   elements.exitPresentationBtn.addEventListener("click", leavePresentationMode);
-    elements.publicQuestionForm.addEventListener("submit", submitPublicQuestion);
-    elements.publicQuizForm.addEventListener("submit", submitPublicQuiz);
-    elements.publicQuizOptions.addEventListener("change", () => { elements.publicQuizSubmit.disabled = !elements.publicQuizOptions.querySelector("input:checked"); });
-    elements.quizEditor.addEventListener("submit", saveQuizFromEditor);
-    elements.questionsList.addEventListener("click", (event) => {
+  elements.publicQuestionForm.addEventListener("submit", submitPublicQuestion);
+  elements.questionsList.addEventListener("click", (event) => {
       const questionButton = event.target.closest("[data-question-id]");
       if (!questionButton) {
         return;

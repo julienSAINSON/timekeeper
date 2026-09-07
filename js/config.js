@@ -1,3 +1,5 @@
+import { normalizeQuizConfiguration } from "./quiz.js";
+
 const STORAGE_KEY = "safe-timekeeper-config-v1";
 
 function getCurrentLocalTime() {
@@ -24,19 +26,26 @@ function normalizeSlots(rawSlots) {
     return [];
   }
 
-  return rawSlots.map((rawSlot, index) => ({
-    id: typeof rawSlot?.id === "string" ? rawSlot.id : `slot-${index + 1}`,
-    name: typeof rawSlot?.name === "string" ? rawSlot.name : "",
-    type: ["presentation", "question", "quiz"].includes(rawSlot?.type)
+  return rawSlots.map((rawSlot, index) => {
+    const type = ["presentation", "question", "quiz"].includes(rawSlot?.type)
       ? rawSlot.type
-      : "presentation",
-    startSlide: Number.isFinite(Number(rawSlot?.startSlide)) ? Number(rawSlot.startSlide) : 0,
-    endSlide: Number.isFinite(Number(rawSlot?.endSlide)) ? Number(rawSlot.endSlide) : 0,
-    durationMinutes: Number.isFinite(Number(rawSlot?.durationMinutes))
-      ? Number(rawSlot.durationMinutes)
-      : 0,
-    optional: typeof rawSlot?.optional === "boolean" ? rawSlot.optional : false,
-  }));
+      : "presentation";
+    const slot = {
+      id: typeof rawSlot?.id === "string" ? rawSlot.id : `slot-${index + 1}`,
+      name: typeof rawSlot?.name === "string" ? rawSlot.name : "",
+      type,
+      startSlide: Number.isFinite(Number(rawSlot?.startSlide)) ? Number(rawSlot.startSlide) : 0,
+      endSlide: Number.isFinite(Number(rawSlot?.endSlide)) ? Number(rawSlot.endSlide) : 0,
+      durationMinutes: Number.isFinite(Number(rawSlot?.durationMinutes))
+        ? Number(rawSlot.durationMinutes)
+        : 0,
+      optional: typeof rawSlot?.optional === "boolean" ? rawSlot.optional : false,
+    };
+    if (type === "quiz") {
+      slot.quiz = normalizeQuizConfiguration(rawSlot?.quiz);
+    }
+    return slot;
+  });
 }
 
 export function normalizeState(rawState) {
