@@ -121,6 +121,17 @@ export function loadOwnedPublicSessionRoom(sessionId) {
   return callRpc("get_owned_public_session_room", { p_session_id: sessionId });
 }
 
+export function recordPublicRoomParticipant(roomToken, participantId) {
+  return callRpc("record_public_room_participant", {
+    p_room_token: roomToken,
+    p_participant_id: participantId,
+  });
+}
+
+export function getOwnedPublicRoomParticipantCount(sessionId) {
+  return callRpc("get_owned_public_room_participant_count", { p_session_id: sessionId });
+}
+
 export function createPublicSessionQuestion(roomToken, participantId, text) {
   return callRpc("create_public_session_question", {
     p_room_token: roomToken,

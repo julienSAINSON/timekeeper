@@ -286,13 +286,62 @@ as $$
   where room.session_id = p_session_id and room.owner_user_id = auth.uid();
 $$;
 
+create table if not exists public.tk_public_room_participants (
+  room_token text not null references public.tk_public_session_rooms(room_token) on delete cascade,
+  participant_id uuid not null,
+  joined_at timestamptz not null default now(),
+  primary key (room_token, participant_id)
+);
+
+alter table public.tk_public_room_participants enable row level security;
+
+create or replace function public.record_public_room_participant(
+  p_room_token text,
+  p_participant_id uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if p_room_token !~ '^[A-Za-z0-9_-]{43}$' or p_participant_id is null then
+    raise exception 'Participant ou Room invalide.';
+  end if;
+
+  insert into public.tk_public_room_participants (room_token, participant_id)
+  select room.room_token, p_participant_id
+  from public.tk_public_session_rooms room
+  join public.tk_presentation_sessions session on session.id = room.session_id
+  where room.room_token = p_room_token and session.status = 'active'
+  on conflict (room_token, participant_id) do nothing;
+end;
+$$;
+
+create or replace function public.get_owned_public_room_participant_count(p_session_id uuid)
+returns jsonb
+language sql
+security definer
+set search_path = ''
+as $$
+  select jsonb_build_object('count', count(participant.participant_id))
+  from public.tk_public_session_rooms room
+  left join public.tk_public_room_participants participant on participant.room_token = room.room_token
+  where room.session_id = p_session_id and room.owner_user_id = auth.uid();
+$$;
+
 revoke all on table public.tk_public_session_rooms from anon, authenticated;
 revoke all on function public.create_public_session_room(uuid, text) from public;
 revoke all on function public.get_public_session_room(text) from public;
 revoke all on function public.get_owned_public_session_room(uuid) from public;
+revoke all on table public.tk_public_room_participants from anon, authenticated;
+revoke all on function public.record_public_room_participant(text, uuid) from public;
+revoke all on function public.get_owned_public_room_participant_count(uuid) from public;
 grant execute on function public.create_public_session_room(uuid, text) to authenticated;
 grant execute on function public.get_public_session_room(text) to anon, authenticated;
 grant execute on function public.get_owned_public_session_room(uuid) to authenticated;
+grant execute on function public.record_public_room_participant(text, uuid) to anon, authenticated;
+grant execute on function public.get_owned_public_room_participant_count(uuid) to authenticated;
 
 create table if not exists public.tk_session_questions (
   id uuid primary key default gen_random_uuid(),

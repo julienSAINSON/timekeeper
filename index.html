@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./css/style.css?v=timeline-unallocated-v1" />
+    <link rel="stylesheet" href="./css/style.css?v=monitoring-panels-v2" />
   </head>
   <body>
     <main id="publicRoomView" class="public-room-view" hidden aria-live="polite">
@@ -375,6 +375,10 @@
                     <span class="metric-label">État</span>
                     <strong id="slotStatusText">Prêt</strong>
                   </div>
+                  <div>
+                    <span class="metric-label">Prochain créneau</span>
+                    <strong id="nextSlotMetric">En attente</strong>
+                  </div>
                   <div id="estimatedEndMetric">
                     <span class="metric-label">Fin estimée</span>
                     <strong id="estimatedEnd">--:--</strong>
@@ -382,50 +386,64 @@
                 </div>
               </div>
               <section id="roomAccess" class="room-access" hidden aria-labelledby="roomAccessTitle">
-                <div>
-                  <p class="eyebrow">Room public</p>
-                  <h3 id="roomAccessTitle">Rejoindre la session</h3>
-                  <a id="roomLink" class="room-link" target="_blank" rel="noopener"></a>
+                <button class="monitoring-panel-toggle" type="button" data-monitoring-panel="room" aria-expanded="false">
+                  <span><span class="eyebrow">Room public</span><strong id="roomAccessTitle">Rejoindre la session</strong></span>
+                  <span class="monitoring-panel-toggle-icon" aria-hidden="true">▼</span>
+                </button>
+                <div id="roomAccessContent" class="monitoring-panel-content" hidden>
+                  <div>
+                    <a id="roomLink" class="room-link" target="_blank" rel="noopener"></a>
+                  </div>
+                  <button id="roomQrCode" class="room-qr-code" type="button" aria-label="Agrandir le QR code" title="Agrandir le QR code"></button>
+                  <div class="room-participants">
+                    <span><strong id="roomParticipantCount">--</strong> participant(s) connecté(s)</span>
+                    <button id="refreshRoomParticipantCountBtn" class="ghost-button" type="button">Actualiser</button>
+                  </div>
                 </div>
-                <div id="roomQrCode" class="room-qr-code" aria-label="QR code pour rejoindre la session"></div>
               </section>
               <section id="recoveryPanel" class="questions-panel" hidden aria-labelledby="recoveryTitle">
-                <div>
-                  <p class="eyebrow">Planning</p>
-                  <h3 id="recoveryTitle">Rattraper du temps</h3>
-                </div>
-                <p id="recoveryDelay" class="quiz-responses-count"></p>
-                <p id="recoveryRecommendation" class="quiz-responses-count"></p>
-                <div id="recoverySlots" class="recovery-slots"></div>
-                <p id="recoverySummary" class="quiz-responses-count"></p>
-                <div class="question-actions">
-                  <button id="keepRecoveryPlanBtn" class="ghost-button" type="button">Conserver le plan</button>
-                  <button id="skipRecoverySlotsBtn" class="secondary-button" type="button" disabled>Adapter la timeline</button>
+                <button class="monitoring-panel-toggle" type="button" data-monitoring-panel="planning" aria-expanded="false">
+                  <span><span class="eyebrow">Planning</span><strong id="recoveryTitle">Rattraper du temps</strong></span>
+                  <span class="monitoring-panel-toggle-icon" aria-hidden="true">▼</span>
+                </button>
+                <div id="recoveryPanelContent" class="monitoring-panel-content" hidden>
+                  <p id="recoveryDelay" class="quiz-responses-count"></p>
+                  <p id="recoveryRecommendation" class="quiz-responses-count"></p>
+                  <div id="recoverySlots" class="recovery-slots"></div>
+                  <p id="recoverySummary" class="quiz-responses-count"></p>
+                  <div class="question-actions">
+                    <button id="keepRecoveryPlanBtn" class="ghost-button" type="button">Conserver le plan</button>
+                    <button id="skipRecoverySlotsBtn" class="secondary-button" type="button" disabled>Adapter la timeline</button>
+                  </div>
                 </div>
               </section>
               <section id="questionsPanel" class="questions-panel" hidden aria-labelledby="questionsTitle">
-                <div>
-                  <p class="eyebrow">Audience</p>
-                  <h3 id="questionsTitle">Questions</h3>
+                <button class="monitoring-panel-toggle" type="button" data-monitoring-panel="questions" aria-expanded="false">
+                  <span><span class="eyebrow">Audience</span><strong id="questionsTitle">Questions</strong></span>
+                  <span class="monitoring-panel-toggle-icon" aria-hidden="true">▼</span>
+                </button>
+                <div id="questionsPanelContent" class="monitoring-panel-content" hidden>
+                  <div id="questionsList" class="questions-list" aria-live="polite"></div>
+                  <section id="selectedQuestion" class="selected-question" hidden aria-labelledby="selectedQuestionTitle">
+                    <p class="eyebrow" id="selectedQuestionTitle">Question sélectionnée</p>
+                    <p id="selectedQuestionText"></p>
+                    <p><span id="selectedQuestionTime"></span> · <span id="selectedQuestionStatus"></span></p>
+                    <p id="selectedQuestionContext" class="question-context"></p>
+                    <div class="question-actions">
+                      <button id="answerQuestionBtn" class="secondary-button" type="button">Marquer comme traitée</button>
+                      <button id="dismissQuestionBtn" class="ghost-button" type="button">Écarter</button>
+                    </div>
+                  </section>
                 </div>
-                <div id="questionsList" class="questions-list" aria-live="polite"></div>
-                <section id="selectedQuestion" class="selected-question" hidden aria-labelledby="selectedQuestionTitle">
-                  <p class="eyebrow" id="selectedQuestionTitle">Question sélectionnée</p>
-                  <p id="selectedQuestionText"></p>
-                  <p><span id="selectedQuestionTime"></span> · <span id="selectedQuestionStatus"></span></p>
-                  <p id="selectedQuestionContext" class="question-context"></p>
-                  <div class="question-actions">
-                    <button id="answerQuestionBtn" class="secondary-button" type="button">Marquer comme traitée</button>
-                    <button id="dismissQuestionBtn" class="ghost-button" type="button">Écarter</button>
-                  </div>
-                </section>
               </section>
               <section id="quizResponsesPanel" class="questions-panel" hidden aria-labelledby="quizResponsesTitle">
-                <div>
-                  <p class="eyebrow">Audience</p>
-                  <h3 id="quizResponsesTitle">Quiz</h3>
+                <button class="monitoring-panel-toggle" type="button" data-monitoring-panel="quiz" aria-expanded="false">
+                  <span><span class="eyebrow">Audience</span><strong id="quizResponsesTitle">Quiz</strong></span>
+                  <span class="monitoring-panel-toggle-icon" aria-hidden="true">▼</span>
+                </button>
+                <div id="quizResponsesContent" class="monitoring-panel-content" hidden>
+                  <div id="quizMonitoringList" class="quiz-monitoring-list" aria-live="polite"></div>
                 </div>
-                <div id="quizMonitoringList" class="quiz-monitoring-list" aria-live="polite"></div>
               </section>
               <div class="presentation-help">
                 Raccourcis: ← → Espace pour naviguer, <kbd>P</kbd> pause/reprise, <kbd>F</kbd> ou <kbd>F11</kbd> plein écran.
@@ -462,6 +480,6 @@
       data-pdfjs="true"
     ></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <script type="module" src="./js/app.js?v=question-monitoring-context-v1"></script>
+    <script type="module" src="./js/app.js?v=room-qr-window-v1"></script>
   </body>
 </html>

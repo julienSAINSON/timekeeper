@@ -1163,7 +1163,8 @@ kbd {
 }
 
 .room-access {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
@@ -1173,6 +1174,16 @@ kbd {
   border-radius: 8px;
   background: #ffffff;
   box-shadow: inset 4px 0 0 var(--accent);
+}
+
+.room-access > .monitoring-panel-toggle,
+.room-access > .monitoring-panel-content {
+  grid-column: 1 / -1;
+}
+
+.room-access .monitoring-panel-content {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
 }
 
 .room-access h3 {
@@ -1208,6 +1219,19 @@ kbd {
   place-items: center;
   padding: 8px;
   background: #ffffff;
+  border: 0;
+  cursor: pointer;
+}
+
+.room-participants {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+  color: var(--text);
+}
+
+.room-participants .ghost-button {
+  padding: 8px 12px;
 }
 
 .questions-panel,
@@ -1221,9 +1245,65 @@ kbd {
   background: var(--panel-soft);
 }
 
+.questions-panel[hidden],
+.room-access[hidden] {
+  display: none;
+}
+
 .questions-panel h3 {
   margin: 0;
   font-size: 1.1rem;
+}
+
+.monitoring-panel-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.monitoring-panel-toggle > span:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.monitoring-panel-toggle .eyebrow {
+  margin: 0;
+}
+
+.monitoring-panel-toggle strong {
+  font-size: 1.1rem;
+}
+
+.monitoring-panel-toggle-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: 0.7rem;
+  transition: transform 160ms ease;
+}
+
+.monitoring-panel-toggle.is-expanded .monitoring-panel-toggle-icon {
+  transform: rotate(180deg);
+}
+
+.monitoring-panel-content {
+  display: grid;
+  gap: 12px;
+}
+
+.monitoring-panel-content[hidden] {
+  display: none;
 }
 
 #recoveryPanel {

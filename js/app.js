@@ -55,6 +55,7 @@ import {
   deleteSharedPlenary,
   forgetProject,
   getKnownProjects,
+  getOwnedPublicRoomParticipantCount,
   loadPresentationSession,
   loadOwnedSessionQuestions,
   loadPublicParticipantQuestions,
@@ -72,6 +73,7 @@ import {
   submitPublicQuizResponse,
   getOwnedQuizResponseSummary,
   publishPublicRoomActivity,
+  recordPublicRoomParticipant,
   updateOwnedSessionQuestionStatus,
   updatePublicParticipantQuestion,
   updatePresentationSession,
@@ -118,6 +120,10 @@ let publicParticipantQuestions = [];
 let editingPublicQuestionId = null;
 const collapsedQuizSlotIds = new Set();
 let draggedSlotId = null;
+const collapsedMonitoringPanelIds = new Set();
+let recoveryPanelWasVisible = null;
+let quizMonitoringHasRendered = false;
+let questionsHaveLoaded = false;
 let tickHandle = null;
 let fullscreenProgressAnimationHandle = null;
 let currentPdfBuffer = null;
@@ -283,6 +289,7 @@ const elements = {
   currentSlotName: document.querySelector("#currentSlotName"),
   slotTimer: document.querySelector("#slotTimer"),
   slotStatusText: document.querySelector("#slotStatusText"),
+  nextSlotMetric: document.querySelector("#nextSlotMetric"),
   timeDebt: document.querySelector("#timeDebt"),
   debtBadge: document.querySelector("#debtBadge"),
   sessionDelayBadge: document.querySelector("#sessionDelayBadge"),
@@ -295,9 +302,13 @@ const elements = {
   plannedEndLabel: document.querySelector("#plannedEndLabel"),
   pdfPreviewState: document.querySelector("#pdfPreviewState"),
   roomAccess: document.querySelector("#roomAccess"),
+  roomAccessContent: document.querySelector("#roomAccessContent"),
   roomQrCode: document.querySelector("#roomQrCode"),
   roomLink: document.querySelector("#roomLink"),
+  roomParticipantCount: document.querySelector("#roomParticipantCount"),
+  refreshRoomParticipantCountBtn: document.querySelector("#refreshRoomParticipantCountBtn"),
   recoveryPanel: document.querySelector("#recoveryPanel"),
+  recoveryPanelContent: document.querySelector("#recoveryPanelContent"),
   recoveryDelay: document.querySelector("#recoveryDelay"),
   recoveryRecommendation: document.querySelector("#recoveryRecommendation"),
   recoverySlots: document.querySelector("#recoverySlots"),
@@ -320,8 +331,10 @@ const elements = {
   publicQuizSubmit: document.querySelector("#publicQuizSubmit"),
   publicQuizFeedback: document.querySelector("#publicQuizFeedback"),
   quizResponsesPanel: document.querySelector("#quizResponsesPanel"),
+  quizResponsesContent: document.querySelector("#quizResponsesContent"),
   quizMonitoringList: document.querySelector("#quizMonitoringList"),
   questionsPanel: document.querySelector("#questionsPanel"),
+  questionsPanelContent: document.querySelector("#questionsPanelContent"),
   questionsList: document.querySelector("#questionsList"),
   selectedQuestion: document.querySelector("#selectedQuestion"),
   selectedQuestionText: document.querySelector("#selectedQuestionText"),
@@ -1225,6 +1238,32 @@ function switchView(isPresentation) {
   document.body.classList.toggle("is-monitoring", isPresentation && viewMode === "monitoring");
 }
 
+function getMonitoringPanelElements(panelId) {
+  return {
+    room: { panel: elements.roomAccess, content: elements.roomAccessContent },
+    planning: { panel: elements.recoveryPanel, content: elements.recoveryPanelContent },
+    questions: { panel: elements.questionsPanel, content: elements.questionsPanelContent },
+    quiz: { panel: elements.quizResponsesPanel, content: elements.quizResponsesContent },
+  }[panelId] || null;
+}
+
+function setMonitoringPanelCollapsed(panelId, isCollapsed) {
+  const panelElements = getMonitoringPanelElements(panelId);
+  if (!panelElements) return;
+  if (isCollapsed) collapsedMonitoringPanelIds.add(panelId); else collapsedMonitoringPanelIds.delete(panelId);
+  panelElements.content.hidden = isCollapsed;
+  const toggle = document.querySelector(`[data-monitoring-panel="${panelId}"]`);
+  toggle?.setAttribute("aria-expanded", String(!isCollapsed));
+  toggle?.classList.toggle("is-expanded", !isCollapsed);
+}
+
+function setMonitoringPanelVisible(panelId, isVisible) {
+  const panelElements = getMonitoringPanelElements(panelId);
+  if (!panelElements) return;
+  panelElements.panel.hidden = !isVisible;
+  if (isVisible) setMonitoringPanelCollapsed(panelId, collapsedMonitoringPanelIds.has(panelId));
+}
+
 function openMonitoringView(sessionId, monitoringWindow = null) {
   const monitoringUrl = new URL(window.location.href);
   monitoringUrl.searchParams.set("view", "monitoring");
@@ -1242,7 +1281,7 @@ function openMonitoringView(sessionId, monitoringWindow = null) {
 
 function renderRoomAccess() {
   const isVisible = viewMode === "monitoring" && Boolean(activeRoomToken);
-  elements.roomAccess.hidden = !isVisible;
+  setMonitoringPanelVisible("room", isVisible);
   if (!isVisible) {
     return;
   }
@@ -1262,6 +1301,51 @@ function renderRoomAccess() {
       correctLevel: window.QRCode.CorrectLevel.M,
     });
   }
+}
+
+async function refreshRoomParticipantCount() {
+  if (!activeSessionId || viewMode !== "monitoring") return;
+  elements.refreshRoomParticipantCountBtn.disabled = true;
+  try {
+    const result = await getOwnedPublicRoomParticipantCount(activeSessionId);
+    const participantCount = String(result?.count ?? 0);
+    const hasChanged = elements.roomParticipantCount.textContent !== participantCount;
+    elements.roomParticipantCount.textContent = participantCount;
+    if (hasChanged) setMonitoringPanelCollapsed("room", false);
+  } catch (error) {
+    console.error("Impossible d'actualiser le nombre de participants.", error);
+    elements.roomParticipantCount.textContent = "--";
+  } finally {
+    elements.refreshRoomParticipantCountBtn.disabled = false;
+  }
+}
+
+function openRoomQrPopup() {
+  if (!activeRoomToken) return;
+  const roomUrl = getPublicRoomUrl(activeRoomToken);
+  const canvas = elements.roomQrCode.querySelector("canvas");
+  const image = elements.roomQrCode.querySelector("img");
+  const qrImageSource = canvas?.toDataURL() || image?.src || "";
+  const popup = window.open("", "timekeeper-room-qr", "popup,width=420,height=560,resizable=yes");
+  if (!popup) return;
+  popup.document.title = "QR code de la session";
+  popup.document.body.innerHTML = `
+    <main>
+      <p>ROOM PUBLIC</p>
+      <h1>Rejoindre la session</h1>
+      ${qrImageSource ? `<img src="${qrImageSource}" alt="QR code pour rejoindre la session">` : ""}
+      <a href="${roomUrl}" target="_blank" rel="noopener">${roomUrl}</a>
+    </main>`;
+  popup.document.head.insertAdjacentHTML("beforeend", `
+    <style>
+      body { margin: 0; padding: 32px; background: #eef5f8; color: #003b5c; font-family: sans-serif; }
+      main { display: grid; gap: 16px; justify-items: center; text-align: center; }
+      p { margin: 0; font-size: 12px; letter-spacing: 1px; }
+      h1 { margin: 0; font-size: 24px; }
+      img { width: min(280px, 100%); height: auto; background: #fff; padding: 12px; }
+      a { overflow-wrap: anywhere; color: #003b5c; font-weight: 700; }
+    </style>`);
+  popup.focus();
 }
 
 function showPublicRoomView() {
@@ -1285,6 +1369,8 @@ async function loadPublicRoom(roomToken) {
       ? "La session est en cours. Restez sur cette page pour participer aux prochaines activités."
       : "En attente du début de la session.";
     initAuth({ supabaseUrl: SUPABASE_URL, supabaseAnonKey: SUPABASE_ANON_KEY });
+    recordPublicRoomParticipant(roomToken, getParticipantId())
+      .catch((error) => console.error("Impossible d'enregistrer le participant Room.", error));
     stopPublicRoomActivity?.();
     stopPublicRoomActivity = subscribeToPublicRoomActivity(roomToken, () => {
       refreshPublicRoomActivity().catch((error) => console.error("Impossible d'actualiser l'activité du Room.", error));
@@ -1427,7 +1513,7 @@ async function submitPublicQuiz(event) {
 
 function renderQuestions() {
   const isMonitoring = viewMode === "monitoring" && Boolean(activeSessionId);
-  elements.questionsPanel.hidden = !isMonitoring;
+  setMonitoringPanelVisible("questions", isMonitoring);
   if (!isMonitoring) {
     return;
   }
@@ -1500,8 +1586,12 @@ function upsertQuestion(question) {
   const index = sessionQuestions.findIndex((item) => item.id === question.id);
   if (index < 0) {
     sessionQuestions.unshift(addQuestionMonitoringContext(question));
+    if (questionsHaveLoaded) setMonitoringPanelCollapsed("questions", false);
   } else {
-    sessionQuestions[index] = addQuestionMonitoringContext(question, sessionQuestions[index]);
+    const previousQuestion = sessionQuestions[index];
+    sessionQuestions[index] = addQuestionMonitoringContext(question, previousQuestion);
+    const hasChanged = previousQuestion.text !== question.text || previousQuestion.status !== question.status;
+    if (questionsHaveLoaded && hasChanged) setMonitoringPanelCollapsed("questions", false);
   }
   renderQuestions();
 }
@@ -1514,6 +1604,7 @@ async function loadQuestionsForMonitoring(sessionId) {
     addQuestionMonitoringContext(question)
   ));
   renderQuestions();
+  questionsHaveLoaded = true;
   stopQuestionsSubscription?.();
   stopQuestionsSubscription = subscribeToSessionQuestions(sessionId, upsertQuestion, upsertQuestion);
 }
@@ -1639,6 +1730,10 @@ async function joinPresentationSession(sessionId) {
   applySessionRecord(record);
   quizResponseSummaries.clear();
   quizMonitoringSignature = null;
+  quizMonitoringHasRendered = false;
+  questionsHaveLoaded = false;
+  recoveryPanelWasVisible = null;
+  collapsedMonitoringPanelIds.clear();
   monitoredQuizId = null;
   selectedRecoverySlotIds.clear();
   dismissedRecoverySlide = null;
@@ -1664,7 +1759,17 @@ async function joinPresentationSession(sessionId) {
 }
 
 function renderQuizMonitoring(entries) {
-  elements.quizResponsesPanel.hidden = viewMode !== "monitoring" || !entries.length;
+  const isVisible = viewMode === "monitoring";
+  setMonitoringPanelVisible("quiz", isVisible);
+  if (isVisible && quizMonitoringHasRendered) setMonitoringPanelCollapsed("quiz", false);
+  quizMonitoringHasRendered = true;
+  if (!entries.length) {
+    elements.quizMonitoringList.replaceChildren(Object.assign(document.createElement("p"), {
+      className: "questions-empty",
+      textContent: "Aucun Quiz configuré pour cette session.",
+    }));
+    return;
+  }
   elements.quizMonitoringList.replaceChildren(...entries.map(({ slot, status }) => {
     const item = document.createElement("section");
     item.className = `quiz-monitoring-item is-${status}`;
@@ -1726,12 +1831,21 @@ function renderRecoveryProposal(delayMs) {
     presentationSession.currentSlide,
     presentationSession.skippedSlotIds,
   );
-  const isVisible = viewMode === "monitoring"
-    && delayMs > 0
+  const hasRecoveryProposal = delayMs > 0
     && futureOptionalSlots.length > 0
     && dismissedRecoverySlide !== presentationSession.currentSlide;
-  elements.recoveryPanel.hidden = !isVisible;
-  if (!isVisible) return;
+  const isVisible = viewMode === "monitoring";
+  setMonitoringPanelVisible("planning", isVisible);
+  if (hasRecoveryProposal && recoveryPanelWasVisible === false) setMonitoringPanelCollapsed("planning", false);
+  recoveryPanelWasVisible = hasRecoveryProposal;
+  if (!hasRecoveryProposal) {
+    elements.recoveryDelay.textContent = "Planning respecté";
+    elements.recoveryRecommendation.textContent = "Aucune adaptation de créneau n'est nécessaire pour le moment.";
+    elements.recoverySlots.replaceChildren();
+    elements.recoverySummary.textContent = "";
+    elements.skipRecoverySlotsBtn.disabled = true;
+    return;
+  }
 
   const availableSlotIds = new Set(futureOptionalSlots.map((slot) => slot.id));
   selectedRecoverySlotIds.forEach((slotId) => {
@@ -2050,6 +2164,9 @@ function renderPresentationMetrics() {
   elements.fullscreenOverrun.textContent = slotStatus.overrunMs > 0 ? slotStatus.label : "";
   elements.sideNextSlotName.textContent = nextSlot?.name ?? "Fin de la plénière";
   elements.sideNextSlotTime.textContent = nextSlot ? formatClock(nextSlot.durationMs) : "--:--";
+  elements.nextSlotMetric.textContent = nextSlot
+    ? `${nextSlot.name} (${formatClock(nextSlot.durationMs)})`
+    : "Fin de la plénière";
   elements.timeDebt.textContent = `+${formatClock(totalDebtMs)}`;
     const sessionDelayMs = getSessionDelayMs(presentationSession, slotTimings, presentationSession.currentSlide);
     const showSessionDelay = viewMode === "monitoring" && sessionDelayMs !== null;
@@ -2546,7 +2663,14 @@ function attachEvents() {
   elements.slotWizardNextSlideBtn.addEventListener("click", () => selectSlotWizardSlide(1));
   elements.slotWizardLastSlideBtn.addEventListener("click", () => selectSlotWizardBoundarySlide(true));
   elements.slotWizardCreateBtn.addEventListener("click", createSlotsFromWizard);
-
+  elements.roomQrCode.addEventListener("click", openRoomQrPopup);
+  elements.refreshRoomParticipantCountBtn.addEventListener("click", refreshRoomParticipantCount);
+  document.querySelectorAll("[data-monitoring-panel]").forEach((toggle) => {
+    toggle.addEventListener("click", () => {
+      const panelId = toggle.dataset.monitoringPanel;
+      setMonitoringPanelCollapsed(panelId, !collapsedMonitoringPanelIds.has(panelId));
+    });
+  });
   elements.slotsList.addEventListener("input", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) {
