@@ -1618,7 +1618,7 @@ body.is-presenting:not(.is-monitoring) #pdfCanvas {
   box-sizing: border-box;
   position: relative;
   min-width: 0;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   padding: 14px 12px;
   border-right: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;

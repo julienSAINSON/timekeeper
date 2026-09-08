@@ -30,12 +30,19 @@ export function renderTimeline({
   currentSlotElapsedMs = 0,
   initialAdvanceMs = 0,
 }) {
-  const totalOverrunMs = totalDebtMs;
-  const overflowDurationMs = Math.max(0, totalOverrunMs - unallocatedDurationMs);
   const remainingInitialAdvanceMs = Math.max(0, initialAdvanceMs - elapsedMs);
-  const displayDurationMs =
-    totalDurationMs + initialDelayMs + remainingInitialAdvanceMs + overflowDurationMs;
-  const remainingUnallocatedDurationMs = Math.max(0, unallocatedDurationMs - totalOverrunMs);
+  const remainingUnallocatedDurationMs = Math.max(0, unallocatedDurationMs - totalDebtMs);
+  const totalSlotDurationMs = slotTimings.reduce((total, slot) => {
+    const isCurrent = currentSlide >= slot.startSlide && currentSlide <= slot.endSlide;
+    const slotOverrunMs = isCurrent
+      ? currentOverrunMs
+      : Number(slotOverrunsMs[slot.id] || 0);
+    return total + slot.durationMs + slotOverrunMs;
+  }, 0);
+  const displayDurationMs = Math.max(
+    1,
+    remainingInitialAdvanceMs + initialDelayMs + totalSlotDurationMs + remainingUnallocatedDurationMs,
+  );
   trackElement.innerHTML = "";
 
   if (remainingInitialAdvanceMs > 0) {

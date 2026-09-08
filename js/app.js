@@ -45,7 +45,7 @@ import {
   validateQuizConfiguration,
 } from "./quiz.js?v=quiz-monitoring-realtime-v1";
 import { calculateSlotReductions } from "./overrun.js";
-import { renderTimeline } from "./timeline.js";
+import { renderTimeline } from "./timeline.js?v=timeline-unallocated-v2";
 import {
   createPresentationSession,
   createPublicSessionRoom,

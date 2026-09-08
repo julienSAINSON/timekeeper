@@ -48,7 +48,7 @@ import {
   getSlotTiming,
 } from "../js/timer.js?v=recovery-recommendation-v1";
 import { calculateSlotReductions } from "../js/overrun.js";
-import { renderTimeline } from "../js/timeline.js";
+import { renderTimeline } from "../js/timeline.js?v=timeline-unallocated-v2";
 
 const results = document.querySelector("#results");
 const summary = document.querySelector("#summary");
@@ -743,6 +743,33 @@ test("La timeline affiche le temps de démarrage tardif", () => {
   const { track, marker } = renderTestTimeline({ initialDelayMs: 60000, elapsedMs: 30000 });
   equal(track.querySelector(".start-delay small").textContent, "+01:00");
   assert(Number.parseFloat(marker.style.left) > 0);
+});
+
+test("La timeline termine par le temps non dédié", () => {
+  const { track } = renderTestTimeline({
+    slots: [slot("slot-1", 1, 1, 5)],
+    totalDurationMs: 600000,
+    unallocatedDurationMs: 300000,
+  });
+  const segments = [...track.querySelectorAll(".timeline-slot")];
+  equal(segments.at(-1).classList.contains("unallocated"), true);
+  const totalWidth = segments.reduce((sum, segment) => sum + Number.parseFloat(segment.style.width), 0);
+  assert(Math.abs(totalWidth - 100) < 0.001, `La timeline doit couvrir 100 %, obtenu ${totalWidth} %.`);
+});
+
+test("Le délai initial ne laisse pas de vide après le temps non dédié", () => {
+  const { track } = renderTestTimeline({
+    slots: [slot("slot-1", 1, 1, 5)],
+    totalDurationMs: 360000,
+    totalDebtMs: 25000,
+    initialDelayMs: 25000,
+    unallocatedDurationMs: 60000,
+  });
+  const segments = [...track.querySelectorAll(".timeline-slot")];
+  const unallocated = track.querySelector(".timeline-slot.unallocated");
+  equal(unallocated.querySelector("small").textContent, "00:35");
+  const totalWidth = segments.reduce((sum, segment) => sum + Number.parseFloat(segment.style.width), 0);
+  assert(Math.abs(totalWidth - 100) < 0.001, `La timeline doit couvrir 100 %, obtenu ${totalWidth} %.`);
 });
 
 test("Le démarrage anticipé diminue et bloque le curseur à gauche", () => {
