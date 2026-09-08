@@ -327,6 +327,7 @@ const elements = {
   selectedQuestionText: document.querySelector("#selectedQuestionText"),
   selectedQuestionTime: document.querySelector("#selectedQuestionTime"),
   selectedQuestionStatus: document.querySelector("#selectedQuestionStatus"),
+  selectedQuestionContext: document.querySelector("#selectedQuestionContext"),
   answerQuestionBtn: document.querySelector("#answerQuestionBtn"),
   dismissQuestionBtn: document.querySelector("#dismissQuestionBtn"),
 };
@@ -1450,7 +1451,10 @@ function renderQuestions() {
     text.textContent = question.text;
     const time = document.createElement("small");
     time.textContent = formatQuestionTime(question.created_at);
-    item.append(status, text, time);
+    const context = document.createElement("small");
+    context.className = "question-context";
+    context.textContent = formatQuestionContext(question.monitoringContext);
+    item.append(status, text, time, context);
     return item;
     }));
   }
@@ -1460,18 +1464,44 @@ function renderQuestions() {
     elements.selectedQuestionText.textContent = selectedQuestion.text;
     elements.selectedQuestionTime.textContent = formatQuestionTime(selectedQuestion.created_at);
     elements.selectedQuestionStatus.textContent = getQuestionStatusLabel(selectedQuestion.status);
+    elements.selectedQuestionContext.textContent = formatQuestionContext(selectedQuestion.monitoringContext);
     const isPending = selectedQuestion.status === "pending";
     elements.answerQuestionBtn.disabled = !isPending;
     elements.dismissQuestionBtn.disabled = !isPending;
   }
 }
 
+function captureQuestionMonitoringContext() {
+  const currentSlide = Number(presentationSession?.currentSlide);
+  const hasCurrentSlide = Number.isInteger(currentSlide) && currentSlide > 0;
+  const activeSlots = getActiveSessionSlots(state.slots, presentationSession?.skippedSlotIds);
+  const currentSlot = hasCurrentSlide ? getCurrentSlot(activeSlots, currentSlide) : null;
+  return {
+    slotName: currentSlot?.name || "Hors créneau",
+    slide: hasCurrentSlide ? currentSlide : null,
+  };
+}
+
+function formatQuestionContext(context) {
+  if (!context) return "Contexte non disponible";
+  return context.slide === null
+    ? `Créneau : ${context.slotName}`
+    : `Créneau : ${context.slotName} · Slide ${context.slide}`;
+}
+
+function addQuestionMonitoringContext(question, previousQuestion = null) {
+  return {
+    ...question,
+    monitoringContext: previousQuestion?.monitoringContext || captureQuestionMonitoringContext(),
+  };
+}
+
 function upsertQuestion(question) {
   const index = sessionQuestions.findIndex((item) => item.id === question.id);
   if (index < 0) {
-    sessionQuestions.unshift(question);
+    sessionQuestions.unshift(addQuestionMonitoringContext(question));
   } else {
-    sessionQuestions[index] = question;
+    sessionQuestions[index] = addQuestionMonitoringContext(question, sessionQuestions[index]);
   }
   renderQuestions();
 }
@@ -1480,7 +1510,9 @@ async function loadQuestionsForMonitoring(sessionId) {
   if (viewMode !== "monitoring") {
     return;
   }
-  sessionQuestions = await loadOwnedSessionQuestions(sessionId) || [];
+  sessionQuestions = (await loadOwnedSessionQuestions(sessionId) || []).map((question) => (
+    addQuestionMonitoringContext(question)
+  ));
   renderQuestions();
   stopQuestionsSubscription?.();
   stopQuestionsSubscription = subscribeToSessionQuestions(sessionId, upsertQuestion, upsertQuestion);
