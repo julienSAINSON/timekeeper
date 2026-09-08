@@ -194,6 +194,20 @@ test("Crée les types de créneaux et une séquence interactive avec le wizard",
     chooseWizardType(documentToTest, "question");
     assert(documentToTest.querySelector("#slotWizardEndSlide").value === "2", "La question doit commencer à la slide suivante.");
     assert(documentToTest.querySelector("#slotWizardDuration").value === "1", "La durée par défaut doit être une minute.");
+    await waitFor(
+      () => documentToTest.querySelector("#slotWizardPdfCanvas").width > 0,
+      "La miniature de la slide sélectionnée doit être affichée.",
+    );
+    assert(documentToTest.querySelector("#slotWizardPreviousSlideBtn").disabled, "Le bouton précédent doit respecter la première slide disponible.");
+    documentToTest.querySelector("#slotWizardNextSlideBtn").click();
+    assert(documentToTest.querySelector("#slotWizardEndSlide").value === "3", "Le bouton suivant doit sélectionner la slide suivante.");
+    assert(documentToTest.querySelector("#slotWizardPdfPage").textContent === "Slide 3 / 6", "Le compteur de la miniature doit suivre la slide sélectionnée.");
+    documentToTest.querySelector("#slotWizardLastSlideBtn").click();
+    assert(documentToTest.querySelector("#slotWizardEndSlide").value === "6", "La double flèche droite doit sélectionner la dernière slide disponible.");
+    assert(documentToTest.querySelector("#slotWizardLastSlideBtn").disabled, "Le saut à droite doit être désactivé sur la dernière slide disponible.");
+    documentToTest.querySelector("#slotWizardFirstSlideBtn").click();
+    assert(documentToTest.querySelector("#slotWizardEndSlide").value === "2", "La double flèche gauche doit sélectionner la première slide disponible.");
+    assert(documentToTest.querySelector("#slotWizardFirstSlideBtn").disabled, "Le saut à gauche doit être désactivé sur la première slide disponible.");
     documentToTest.querySelector("#slotWizardCreateBtn").click();
     let slots = storedSlots(documentToTest);
     equal(slots.length, 2);
@@ -312,6 +326,42 @@ test("Crée les types de créneaux et une séquence interactive avec le wizard",
     equal(slots[3].endSlide, 5);
     equal(slots[3].durationMinutes, 1);
     assert(typeof slots[3].quiz.id === "string" && slots[3].quiz.id, "Le Quiz créé par une séquence interactive doit être initialisé.");
+    const draggedQuizCard = documentToTest.querySelector(`[data-slot-card-id="${slots[3].id}"]`);
+    const questionCard = documentToTest.querySelector(`[data-slot-card-id="${slots[2].id}"]`);
+    draggedQuizCard.dispatchEvent(new Event("dragstart", { bubbles: true }));
+    questionCard.dispatchEvent(new Event("dragover", { bubbles: true, cancelable: true }));
+    questionCard.dispatchEvent(new Event("drop", { bubbles: true, cancelable: true }));
+    draggedQuizCard.dispatchEvent(new Event("dragend", { bubbles: true }));
+    slots = storedSlots(documentToTest);
+    equal(slots[0].startSlide, 1);
+    equal(slots[0].endSlide, 1);
+    equal(slots[1].startSlide, 2);
+    equal(slots[1].endSlide, 3);
+    equal(slots[2].type, "quiz");
+    equal(slots[2].startSlide, 4);
+    equal(slots[2].endSlide, 4);
+    equal(slots[3].type, "question");
+    equal(slots[3].startSlide, 5);
+    equal(slots[3].endSlide, 5);
+    const draggedInitialCard = documentToTest.querySelector(`[data-slot-card-id="${slots[0].id}"]`);
+    const presentationCard = documentToTest.querySelector(`[data-slot-card-id="${slots[1].id}"]`);
+    const presentationCardBounds = presentationCard.getBoundingClientRect();
+    const dropBelowPresentation = presentationCardBounds.bottom + 1;
+    draggedInitialCard.dispatchEvent(new Event("dragstart", { bubbles: true }));
+    presentationCard.dispatchEvent(new MouseEvent("dragover", { bubbles: true, cancelable: true, clientY: dropBelowPresentation }));
+    presentationCard.dispatchEvent(new MouseEvent("drop", { bubbles: true, cancelable: true, clientY: dropBelowPresentation }));
+    draggedInitialCard.dispatchEvent(new Event("dragend", { bubbles: true }));
+    slots = storedSlots(documentToTest);
+    equal(slots[0].type, "presentation");
+    equal(slots[0].startSlide, 1);
+    equal(slots[0].endSlide, 2);
+    equal(slots[1].id, interactiveInitialSlot.id);
+    equal(slots[1].startSlide, 3);
+    equal(slots[1].endSlide, 3);
+    equal(slots[2].startSlide, 4);
+    equal(slots[2].endSlide, 4);
+    equal(slots[3].startSlide, 5);
+    equal(slots[3].endSlide, 5);
     assert(documentToTest.querySelector("#validationList").textContent.includes("Slides non couvertes: 6"), "La validation de couverture existante doit rester active.");
   } finally {
     if (previousState === null) {

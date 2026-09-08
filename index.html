@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./css/style.css?v=quiz-slot-collapse-v3" />
+    <link rel="stylesheet" href="./css/style.css?v=slot-wizard-preview-v1" />
   </head>
   <body>
     <main id="publicRoomView" class="public-room-view" hidden aria-live="polite">
@@ -156,6 +156,16 @@
             <div class="field"><label id="slotWizardSlideLabel" for="slotWizardEndSlide">Dernière slide</label><input id="slotWizardEndSlide" type="number" min="1" step="1" required /></div>
             <div class="field"><label for="slotWizardDuration">Durée (min)</label><input id="slotWizardDuration" type="number" min="1" step="1" value="1" required /></div>
           </div>
+          <section id="slotWizardPdfPreview" class="slot-wizard-pdf-preview" aria-label="Aperçu de la slide sélectionnée" hidden>
+            <div class="slot-wizard-pdf-header"><strong>Aperçu de la slide</strong><span id="slotWizardPdfPage"></span></div>
+            <canvas id="slotWizardPdfCanvas"></canvas>
+            <div class="slot-wizard-pdf-actions">
+              <button id="slotWizardFirstSlideBtn" class="ghost-button" type="button" aria-label="Première slide disponible" title="Première slide disponible">⇤</button>
+              <button id="slotWizardPreviousSlideBtn" class="ghost-button" type="button" aria-label="Slide précédente" title="Slide précédente">←</button>
+              <button id="slotWizardNextSlideBtn" class="ghost-button" type="button" aria-label="Slide suivante" title="Slide suivante">→</button>
+              <button id="slotWizardLastSlideBtn" class="ghost-button" type="button" aria-label="Dernière slide disponible" title="Dernière slide disponible">⇥</button>
+            </div>
+          </section>
           <p id="slotWizardDetailsError" class="slot-wizard-error" role="alert" hidden></p>
           <div id="slotWizardPreview" class="slot-wizard-preview" hidden></div>
           <div class="dialog-actions slot-wizard-actions"><button id="slotWizardDetailsBackBtn" class="ghost-button" type="button">Précédent</button><button id="slotWizardCreateBtn" class="primary-button" type="button">Ajouter</button></div>
@@ -451,6 +461,6 @@
       data-pdfjs="true"
     ></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <script type="module" src="./js/app.js?v=quiz-slot-collapse-v2"></script>
+    <script type="module" src="./js/app.js?v=slot-wizard-preview-v2"></script>
   </body>
 </html>

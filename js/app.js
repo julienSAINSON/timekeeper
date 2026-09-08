@@ -117,6 +117,7 @@ let selectedQuestionId = null;
 let publicParticipantQuestions = [];
 let editingPublicQuestionId = null;
 const collapsedQuizSlotIds = new Set();
+let draggedSlotId = null;
 let tickHandle = null;
 let fullscreenProgressAnimationHandle = null;
 let currentPdfBuffer = null;
@@ -234,6 +235,13 @@ const elements = {
   slotWizardName: document.querySelector("#slotWizardName"),
   slotWizardEndSlide: document.querySelector("#slotWizardEndSlide"),
   slotWizardDuration: document.querySelector("#slotWizardDuration"),
+  slotWizardPdfPreview: document.querySelector("#slotWizardPdfPreview"),
+  slotWizardPdfCanvas: document.querySelector("#slotWizardPdfCanvas"),
+  slotWizardPdfPage: document.querySelector("#slotWizardPdfPage"),
+  slotWizardFirstSlideBtn: document.querySelector("#slotWizardFirstSlideBtn"),
+  slotWizardPreviousSlideBtn: document.querySelector("#slotWizardPreviousSlideBtn"),
+  slotWizardNextSlideBtn: document.querySelector("#slotWizardNextSlideBtn"),
+  slotWizardLastSlideBtn: document.querySelector("#slotWizardLastSlideBtn"),
   slotWizardSlideLabel: document.querySelector("#slotWizardSlideLabel"),
   slotWizardDetailsLead: document.querySelector("#slotWizardDetailsLead"),
   slotWizardTypeError: document.querySelector("#slotWizardTypeError"),
@@ -784,6 +792,9 @@ function renderSlots() {
     `).join("");
     const article = document.createElement("article");
     article.className = "slot-card";
+    article.draggable = true;
+    article.dataset.slotCardId = slot.id;
+    article.title = "Faites glisser ce créneau pour le déplacer";
     article.classList.toggle("is-optional", slot.optional);
     article.innerHTML = `
       <div class="slot-grid">
@@ -808,8 +819,6 @@ function renderSlots() {
           <span>Créneau optionnel<small>Pourra être proposé comme possibilité de rattrapage.</small></span>
         </label>
         <div class="slot-actions">
-          <button type="button" class="ghost-button" data-move="up" data-slot-id="${slot.id}" ${index === 0 ? "disabled" : ""}>↑</button>
-          <button type="button" class="ghost-button" data-move="down" data-slot-id="${slot.id}" ${index === state.slots.length - 1 ? "disabled" : ""}>↓</button>
           <button type="button" class="danger-button" data-remove="${slot.id}">Supprimer</button>
         </div>
       </div>
@@ -1048,6 +1057,49 @@ function renderSlotWizardDetails() {
   );
   elements.slotWizardCreateBtn.disabled = !hasCapacity;
   renderSlotWizardPreview();
+  renderSlotWizardPdfPreview();
+}
+
+async function renderSlotWizardPdfPreview() {
+  const selectedSlide = Number(elements.slotWizardEndSlide.value);
+  const minSlide = Number(elements.slotWizardEndSlide.min);
+  const maxSlide = Number(elements.slotWizardEndSlide.max);
+  const isValidSelection = Number.isInteger(selectedSlide) && selectedSlide >= minSlide && selectedSlide <= maxSlide;
+  const isAvailable = Boolean(currentPdfBuffer) && isValidSelection;
+  elements.slotWizardPdfPreview.hidden = !isAvailable;
+  if (!isAvailable) return;
+
+  elements.slotWizardPdfPage.textContent = `Slide ${selectedSlide} / ${state.pageCount}`;
+  elements.slotWizardFirstSlideBtn.disabled = selectedSlide <= minSlide;
+  elements.slotWizardPreviousSlideBtn.disabled = selectedSlide <= minSlide;
+  elements.slotWizardNextSlideBtn.disabled = selectedSlide >= maxSlide;
+  elements.slotWizardLastSlideBtn.disabled = selectedSlide >= maxSlide;
+  const pdf = await ensurePdfLoaded();
+  if (!pdf || Number(elements.slotWizardEndSlide.value) !== selectedSlide) return;
+
+  const previewWidth = Math.max(1, elements.slotWizardPdfPreview.clientWidth - 28);
+  await renderPage(selectedSlide, elements.slotWizardPdfCanvas, previewWidth, 260);
+}
+
+function selectSlotWizardSlide(offset) {
+  const currentSlide = Number(elements.slotWizardEndSlide.value);
+  const minSlide = Number(elements.slotWizardEndSlide.min);
+  const maxSlide = Number(elements.slotWizardEndSlide.max);
+  const selectedSlide = Math.min(maxSlide, Math.max(minSlide, currentSlide + offset));
+  if (selectedSlide === currentSlide) return;
+  elements.slotWizardEndSlide.value = String(selectedSlide);
+  renderSlotWizardPreview();
+  renderSlotWizardPdfPreview();
+}
+
+function selectSlotWizardBoundarySlide(useLastSlide) {
+  const selectedSlide = Number(useLastSlide
+    ? elements.slotWizardEndSlide.max
+    : elements.slotWizardEndSlide.min);
+  if (Number(elements.slotWizardEndSlide.value) === selectedSlide) return;
+  elements.slotWizardEndSlide.value = String(selectedSlide);
+  renderSlotWizardPreview();
+  renderSlotWizardPdfPreview();
 }
 
 function renderSlotWizardPreview() {
@@ -1134,19 +1186,32 @@ function createSlotsFromWizard() {
   closeSlotWizard();
 }
 
-function moveSlot(slotId, direction) {
-  const index = state.slots.findIndex((slot) => slot.id === slotId);
-  if (index < 0) {
-    return;
-  }
+function renumberSlotSlides() {
+  let nextStartSlide = 1;
+  state.slots.forEach((slot) => {
+    const startSlide = Number(slot.startSlide);
+    const endSlide = Number(slot.endSlide);
+    const slideCount = Number.isInteger(startSlide) && Number.isInteger(endSlide)
+      ? Math.max(1, endSlide - startSlide + 1)
+      : 1;
+    slot.startSlide = nextStartSlide;
+    slot.endSlide = nextStartSlide + slideCount - 1;
+    nextStartSlide = slot.endSlide + 1;
+  });
+}
 
-  const targetIndex = direction === "up" ? index - 1 : index + 1;
-  if (targetIndex < 0 || targetIndex >= state.slots.length) {
+function moveSlot(slotId, targetSlotId, placeAfter) {
+  const index = state.slots.findIndex((slot) => slot.id === slotId);
+  const targetIndex = state.slots.findIndex((slot) => slot.id === targetSlotId);
+  if (index < 0 || targetIndex < 0 || index === targetIndex) {
     return;
   }
 
   const [slot] = state.slots.splice(index, 1);
-  state.slots.splice(targetIndex, 0, slot);
+  let insertionIndex = targetIndex + (placeAfter ? 1 : 0);
+  if (index < insertionIndex) insertionIndex -= 1;
+  state.slots.splice(insertionIndex, 0, slot);
+  renumberSlotSlides();
   persist();
   renderConfiguration();
 }
@@ -2439,8 +2504,15 @@ function attachEvents() {
       elements.slotWizardTypeStep.hidden = false;
     }
   });
-  elements.slotWizardEndSlide.addEventListener("input", renderSlotWizardPreview);
+  elements.slotWizardEndSlide.addEventListener("input", () => {
+    renderSlotWizardPreview();
+    renderSlotWizardPdfPreview();
+  });
   elements.slotWizardDuration.addEventListener("input", renderSlotWizardPreview);
+  elements.slotWizardFirstSlideBtn.addEventListener("click", () => selectSlotWizardBoundarySlide(false));
+  elements.slotWizardPreviousSlideBtn.addEventListener("click", () => selectSlotWizardSlide(-1));
+  elements.slotWizardNextSlideBtn.addEventListener("click", () => selectSlotWizardSlide(1));
+  elements.slotWizardLastSlideBtn.addEventListener("click", () => selectSlotWizardBoundarySlide(true));
   elements.slotWizardCreateBtn.addEventListener("click", createSlotsFromWizard);
 
   elements.slotsList.addEventListener("input", (event) => {
@@ -2506,11 +2578,49 @@ function attachEvents() {
       return;
     }
 
-    const slotId = target.getAttribute("data-slot-id");
-    const direction = target.getAttribute("data-move");
-    if (slotId && direction) {
-      moveSlot(slotId, direction);
+  });
+
+  elements.slotsList.addEventListener("dragstart", (event) => {
+    const card = event.target instanceof HTMLElement ? event.target.closest("[data-slot-card-id]") : null;
+    if (!(card instanceof HTMLElement)) return;
+    draggedSlotId = card.dataset.slotCardId;
+    card.classList.add("is-dragging");
+    event.dataTransfer?.setData("text/plain", draggedSlotId);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+  });
+
+  elements.slotsList.addEventListener("dragover", (event) => {
+    const card = event.target instanceof HTMLElement ? event.target.closest("[data-slot-card-id]") : null;
+    if (!(card instanceof HTMLElement) || card.dataset.slotCardId === draggedSlotId) return;
+    event.preventDefault();
+    const bounds = card.getBoundingClientRect();
+    const placeAfter = event.clientY > bounds.top + (bounds.height / 2);
+    card.classList.toggle("is-drop-before", !placeAfter);
+    card.classList.toggle("is-drop-after", placeAfter);
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+  });
+
+  elements.slotsList.addEventListener("dragleave", (event) => {
+    const card = event.target instanceof HTMLElement ? event.target.closest("[data-slot-card-id]") : null;
+    if (card instanceof HTMLElement && !card.contains(event.relatedTarget)) {
+      card.classList.remove("is-drop-before", "is-drop-after");
     }
+  });
+
+  elements.slotsList.addEventListener("drop", (event) => {
+    const card = event.target instanceof HTMLElement ? event.target.closest("[data-slot-card-id]") : null;
+    if (!(card instanceof HTMLElement) || !draggedSlotId) return;
+    event.preventDefault();
+    const bounds = card.getBoundingClientRect();
+    moveSlot(draggedSlotId, card.dataset.slotCardId, event.clientY > bounds.top + (bounds.height / 2));
+    draggedSlotId = null;
+  });
+
+  elements.slotsList.addEventListener("dragend", () => {
+    draggedSlotId = null;
+    elements.slotsList.querySelectorAll(".is-dragging, .is-drop-before, .is-drop-after").forEach((card) => {
+      card.classList.remove("is-dragging", "is-drop-before", "is-drop-after");
+    });
   });
 
   elements.startPresentationBtn.addEventListener("click", () => {
