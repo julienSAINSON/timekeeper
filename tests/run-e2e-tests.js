@@ -373,6 +373,41 @@ test("Crée les types de créneaux et une séquence interactive avec le wizard",
   }
 });
 
+test("Décale les créneaux suivants lors de l'extension d'un créneau", async () => {
+  const previousState = localStorage.getItem(STORAGE_KEY);
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    const documentToTest = await loadApplication();
+    await importFixture(documentToTest);
+    changeInput(documentToTest, '[data-field="endSlide"]', "1");
+
+    documentToTest.querySelector("#addSlotBtn").click();
+    chooseWizardType(documentToTest, "question");
+    documentToTest.querySelector("#slotWizardCreateBtn").click();
+
+    documentToTest.querySelector("#addSlotBtn").click();
+    chooseWizardType(documentToTest, "question");
+    documentToTest.querySelector("#slotWizardCreateBtn").click();
+
+    let slots = storedSlots(documentToTest);
+    changeInput(documentToTest, `#slot-end-${slots[0].id}`, "3");
+    slots = storedSlots(documentToTest);
+    equal(slots[0].startSlide, 1);
+    equal(slots[0].endSlide, 3);
+    equal(slots[1].startSlide, 4);
+    equal(slots[1].endSlide, 4);
+    equal(slots[2].startSlide, 5);
+    equal(slots[2].endSlide, 5);
+  } finally {
+    if (previousState === null) {
+      localStorage.removeItem(STORAGE_KEY);
+    } else {
+      localStorage.setItem(STORAGE_KEY, previousState);
+    }
+    await loadApplication();
+  }
+});
+
 test("Navigue depuis Monitoring avec une session locale", async () => {
   const previousSession = localStorage.getItem(LOCAL_SESSION_KEY);
   let monitoringFrame = null;

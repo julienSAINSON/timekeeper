@@ -945,10 +945,12 @@ function updateProjectName(value) {
 }
 
 function updateSlot(slotId, field, value, skipFullRender = false) {
-  const slot = state.slots.find((item) => item.id === slotId);
-  if (!slot) {
+  const slotIndex = state.slots.findIndex((item) => item.id === slotId);
+  if (slotIndex < 0) {
     return;
   }
+  const slot = state.slots[slotIndex];
+  const previousEndSlide = Number(slot.endSlide);
 
   if (field === "optional") {
     slot.optional = Boolean(value);
@@ -958,6 +960,18 @@ function updateSlot(slotId, field, value, skipFullRender = false) {
     slot[field] = "";
   } else {
     slot[field] = Number(value);
+  }
+
+  const slideOffset = field === "endSlide" ? Number(slot.endSlide) - previousEndSlide : 0;
+  const followingSlots = state.slots.slice(slotIndex + 1);
+  const canShiftFollowingSlots = slideOffset > 0
+    && followingSlots.length > 0
+    && Math.max(...followingSlots.map((item) => Number(item.endSlide))) + slideOffset <= state.pageCount;
+  if (canShiftFollowingSlots) {
+    followingSlots.forEach((item) => {
+      item.startSlide = Number(item.startSlide) + slideOffset;
+      item.endSlide = Number(item.endSlide) + slideOffset;
+    });
   }
 
   persist();
