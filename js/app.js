@@ -1032,18 +1032,31 @@ function createSequentialSlot() {
   return slot;
 }
 
-function getNextSlotStartSlide() {
-  const previousSlot = state.slots.at(-1);
-  return previousSlot ? Number(previousSlot.endSlide || 0) + 1 : 1;
-}
-
 function getSlotWizardCapacity() {
   const maxSlide = Math.max(state.pageCount, 1);
-  const startSlide = getNextSlotStartSlide();
+  const occupiedSlides = new Set();
+  state.slots.forEach((slot) => {
+    const startSlide = Math.max(1, Number(slot.startSlide));
+    const endSlide = Math.min(maxSlide, Number(slot.endSlide));
+    for (let slide = startSlide; slide <= endSlide; slide += 1) {
+      occupiedSlides.add(slide);
+    }
+  });
+
+  const startSlide = Array.from({ length: maxSlide }, (_, index) => index + 1)
+    .find((slide) => !occupiedSlides.has(slide));
+  if (!startSlide) {
+    return { startSlide: maxSlide + 1, maxSlide, availableSlides: 0 };
+  }
+
+  let endSlide = startSlide;
+  while (endSlide < maxSlide && !occupiedSlides.has(endSlide + 1)) {
+    endSlide += 1;
+  }
   return {
     startSlide,
-    maxSlide,
-    availableSlides: Math.max(0, maxSlide - startSlide + 1),
+    maxSlide: endSlide,
+    availableSlides: endSlide - startSlide + 1,
   };
 }
 
@@ -1064,7 +1077,12 @@ function renderSlotWizardDetails() {
   const requiredSlides = isInteractive ? 3 : 1;
   const hasCapacity = availableSlides >= requiredSlides;
   const endSlideMaximum = isInteractive ? maxSlide - 2 : maxSlide;
-  const defaultEndSlide = isInteractive ? endSlideMaximum : startSlide;
+  const selectedEndSlide = Number(slotWizard.endSlide);
+  const defaultEndSlide = Number.isInteger(selectedEndSlide)
+    && selectedEndSlide >= startSlide
+    && selectedEndSlide <= endSlideMaximum
+    ? selectedEndSlide
+    : endSlideMaximum;
 
   elements.slotWizardDetailsLead.textContent = isPresentation
     ? `La présentation commencera à la slide ${startSlide}.`
@@ -1157,7 +1175,7 @@ function renderSlotWizardPreview() {
 }
 
 function openSlotWizard() {
-  slotWizard = { type: null, structure: "single" };
+  slotWizard = { type: null, structure: "single", endSlide: null };
   document.querySelectorAll('input[name="slotWizardType"]').forEach((input) => {
     input.checked = false;
   });
@@ -1208,7 +1226,8 @@ function createSlotsFromWizard() {
     );
   }
 
-  state.slots.push(...slotsToAdd);
+  const insertionIndex = state.slots.findIndex((slot) => Number(slot.startSlide) > startSlide);
+  state.slots.splice(insertionIndex === -1 ? state.slots.length : insertionIndex, 0, ...slotsToAdd);
   persist();
   renderConfiguration();
   closeSlotWizard();
@@ -2668,6 +2687,7 @@ function attachEvents() {
     }
   });
   elements.slotWizardEndSlide.addEventListener("input", () => {
+    slotWizard.endSlide = Number(elements.slotWizardEndSlide.value);
     renderSlotWizardPreview();
     renderSlotWizardPdfPreview();
   });

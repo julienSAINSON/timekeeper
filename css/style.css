@@ -1520,6 +1520,14 @@ body.is-monitoring .timeline-panel {
   min-height: 100vh;
 }
 
+body.is-monitoring .presentation-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: 12px 0;
+  background: var(--panel);
+}
+
 body.is-presenting:not(.is-monitoring) .app-shell,
 body.is-presenting:not(.is-monitoring) main,
 body.is-presenting:not(.is-monitoring) .presentation-view.active,
