@@ -47,13 +47,11 @@ export function validateQuizConfiguration(rawQuiz) {
     .map((option) => ({ ...option, label: option.label.trim() }))
     .filter((option) => option.label);
   const hasUniqueOptionIds = new Set(options.map((option) => option.id)).size === options.length;
-  const validCorrectOption = options.some((option) => option.id === quiz.correctOptionId);
 
   if (!question) return { valid: false, quiz: { ...quiz, question, options }, error: "Saisissez la question du quiz." };
   if (options.length < QUIZ_OPTION_MIN || options.length > QUIZ_OPTION_MAX || !hasUniqueOptionIds) {
     return { valid: false, quiz: { ...quiz, question, options }, error: "Ajoutez entre 2 et 4 propositions distinctes." };
   }
-  if (!validCorrectOption) return { valid: false, quiz: { ...quiz, question, options }, error: "Choisissez une bonne réponse renseignée." };
   return { valid: true, quiz: { ...quiz, question, options }, error: "" };
 }
 
@@ -91,7 +89,8 @@ export function classifyQuizComprehension(correctRate) {
 
 export function getQuizComprehensionSignal(quiz, summary) {
   const totalResponses = Math.max(0, Number.parseInt(summary?.totalResponses, 10) || 0);
-  if (!totalResponses) return { totalResponses: 0, correctResponses: 0, correctRate: null, classification: null };
+  const hasCorrectOption = quiz?.options?.some((option) => option.id === quiz.correctOptionId && option.label?.trim());
+  if (!totalResponses || !hasCorrectOption) return { totalResponses, correctResponses: 0, correctRate: null, classification: null };
   const correctResponses = Math.max(0, Number.parseInt(summary?.counts?.[quiz?.correctOptionId], 10) || 0);
   const correctRate = correctResponses / totalResponses;
   return {

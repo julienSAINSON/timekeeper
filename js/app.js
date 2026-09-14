@@ -43,7 +43,7 @@ import {
   getQuizResponseRows,
   normalizePublicQuizActivity,
   validateQuizConfiguration,
-} from "./quiz.js?v=quiz-monitoring-realtime-v1";
+} from "./quiz.js?v=quiz-monitoring-realtime-v2";
 import { calculateSlotReductions } from "./overrun.js";
 import { renderTimeline } from "./timeline.js?v=timeline-unallocated-v2";
 import {
@@ -856,9 +856,9 @@ function renderSlots() {
             `).join("")}
           </div>
           <div class="field">
-            <label for="quiz-correct-option-${slot.id}">Bonne réponse</label>
+            <label for="quiz-correct-option-${slot.id}">Bonne réponse (facultative)</label>
             <select id="quiz-correct-option-${slot.id}" data-quiz-slot-id="${slot.id}" data-quiz-field="correctOptionId">
-              <option value="">Choisir une proposition</option>
+              <option value="">Aucune bonne réponse (sondage)</option>
               ${correctOptionChoices}
             </select>
           </div>
@@ -1811,10 +1811,15 @@ function renderQuizMonitoring(entries) {
     stateLabel.textContent = status === "active" ? "● QUIZ ACTIF" : status === "completed" ? "✓ TERMINÉ" : "○ À VENIR";
     const title = document.createElement("strong");
     title.textContent = slot.name;
+    const slides = document.createElement("p");
+    slides.className = "quiz-responses-count";
+    slides.textContent = slot.startSlide === slot.endSlide
+      ? `Slide ${slot.startSlide}`
+      : `Slides ${slot.startSlide} à ${slot.endSlide}`;
     const question = document.createElement("p");
     question.className = "quiz-responses-question";
     question.textContent = slot.quiz.question;
-    item.append(stateLabel, title, question);
+    item.append(stateLabel, title, slides, question);
     const validation = validateQuizConfiguration(slot.quiz);
     if (!validation.valid) {
       item.append(Object.assign(document.createElement("p"), { textContent: "La configuration de ce Quiz est incomplète." }));
@@ -1839,9 +1844,9 @@ function renderQuizMonitoring(entries) {
       total.className = "quiz-responses-count";
       total.textContent = `Total : ${comprehension.totalResponses} réponse(s)`;
       item.append(options, total);
-      if (!comprehension.classification) {
+      if (!comprehension.totalResponses) {
         item.append(Object.assign(document.createElement("p"), { className: "quiz-comprehension-empty", textContent: "Aucune réponse." }));
-      } else {
+      } else if (comprehension.classification) {
         const signal = document.createElement("p");
         signal.className = `quiz-comprehension-signal is-${comprehension.classification}`;
         const rate = Math.round(comprehension.correctRate * 100);

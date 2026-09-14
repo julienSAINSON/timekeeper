@@ -662,8 +662,7 @@ returns boolean language sql immutable set search_path = '' as $$
     and jsonb_typeof(p_quiz->'options') = 'array'
     and jsonb_array_length(case when jsonb_typeof(p_quiz->'options') = 'array' then p_quiz->'options' else '[]'::jsonb end) = 4
     and (select count(*) from jsonb_array_elements(case when jsonb_typeof(p_quiz->'options') = 'array' then p_quiz->'options' else '[]'::jsonb end) option where char_length(btrim(coalesce(option->>'label', ''))) > 0) between 2 and 4
-    and (select count(*) = 4 and count(distinct option->>'id') = 4 and bool_and(option->>'id' in ('A', 'B', 'C', 'D')) from jsonb_array_elements(case when jsonb_typeof(p_quiz->'options') = 'array' then p_quiz->'options' else '[]'::jsonb end) option)
-    and exists (select 1 from jsonb_array_elements(case when jsonb_typeof(p_quiz->'options') = 'array' then p_quiz->'options' else '[]'::jsonb end) option where option->>'id' = p_quiz->>'correctOptionId' and char_length(btrim(coalesce(option->>'label', ''))) > 0);
+    and (select count(*) = 4 and count(distinct option->>'id') = 4 and bool_and(option->>'id' in ('A', 'B', 'C', 'D')) from jsonb_array_elements(case when jsonb_typeof(p_quiz->'options') = 'array' then p_quiz->'options' else '[]'::jsonb end) option);
 $$;
 
 create or replace function public.get_public_room_activity(p_room_token text, p_participant_id uuid)

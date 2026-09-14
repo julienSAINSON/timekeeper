@@ -32,7 +32,7 @@ import {
   normalizePublicQuizActivity,
   validateQuizConfiguration,
   validateQuizDraft,
-} from "../js/quiz.js?v=quiz-comprehension-signals-v1";
+} from "../js/quiz.js?v=quiz-comprehension-signals-v2";
 import {
   formatClock,
   getActiveSessionSlots,
@@ -188,6 +188,7 @@ test("Initialise et valide la configuration d'un Quiz de projet", () => {
   quiz.question = "Quel état est persistant ?";
   quiz.options[0].label = "ProjectState";
   quiz.options[1].label = "SessionState";
+  assert(validateQuizConfiguration(quiz).valid, "Deux propositions doivent suffire pour un sondage.");
   quiz.correctOptionId = "A";
   assert(validateQuizConfiguration(quiz).valid, "Deux propositions et une bonne réponse doivent suffire.");
 
@@ -197,7 +198,7 @@ test("Initialise et valide la configuration d'un Quiz de projet", () => {
   quiz.correctOptionId = "D";
   assert(validateQuizConfiguration(quiz).valid);
   quiz.options[3].label = "";
-  assert(!validateQuizConfiguration(quiz).valid, "La bonne réponse doit désigner une proposition renseignée.");
+  assert(validateQuizConfiguration(quiz).valid, "Un sondage reste valide sans bonne réponse.");
 });
 
 test("Le DTO public du Quiz ne conserve aucune donnée de correction", () => {
@@ -262,10 +263,25 @@ test("Calcule un signal Quiz sans réponse ni donnée persistée", () => {
   assert(!Object.hasOwn(signal, "participant_id"));
 });
 
+test("N'évalue pas la compréhension d'un sondage sans bonne réponse", () => {
+  const quiz = createQuizConfiguration();
+  quiz.question = "Quel sujet souhaitez-vous aborder ?";
+  quiz.options[0].label = "Projet";
+  quiz.options[1].label = "Planning";
+  const signal = getQuizComprehensionSignal(quiz, { totalResponses: 3, counts: { A: 2, B: 1 } });
+  equal(signal.totalResponses, 3);
+  equal(signal.correctRate, null);
+  equal(signal.classification, null);
+});
+
 test("Calcule des signaux indépendants pour plusieurs Quiz", () => {
   const firstQuiz = createQuizConfiguration();
+  firstQuiz.options[0].label = "Oui";
+  firstQuiz.options[1].label = "Non";
   firstQuiz.correctOptionId = "A";
   const secondQuiz = createQuizConfiguration();
+  secondQuiz.options[0].label = "Oui";
+  secondQuiz.options[1].label = "Non";
   secondQuiz.correctOptionId = "B";
   const firstSignal = getQuizComprehensionSignal(firstQuiz, { totalResponses: 4, counts: { A: 3, B: 1 } });
   const secondSignal = getQuizComprehensionSignal(secondQuiz, { totalResponses: 5, counts: { A: 4, B: 1 } });
